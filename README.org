@@ -1,0 +1,80 @@
+A bridge from emacs to OSC, with the intent to augment emacs with
+monome.
+
+* OSC bridge process
+
+We will use a separate process to bridge emacs to the OSC protocol.
+
+The process will be initially written in python.
+
+** Setup
+
+First, let's create the requirements files:
+
+#+begin_src text :tangle "bridge/requirements.txt"
+pybonjour
+pyosc
+#+end_src
+
+#+begin_src text :tangle "bridge/dev_requirements.txt"
+nose
+#+end_src
+
+And the two scrits init.sh and dev.sh, the first for use and the
+second one for development. You are encouraged to call these from
+within a virtual environment.
+
+#+begin_src sh :tangle "bridge/init.sh" :exports none
+pip install -r requirements.txt
+#+end_src
+
+#+begin_src sh :tangle "bridge/dev.sh" :exports none
+pip install -r requirements.txt -r dev_requirements.txt
+#+end_src
+
+You may also do it from within emacs, assuming you have installed the
+python-environment package:
+
+#+begin_src elisp
+  (require 'python-environment)
+
+  (defun emacs-osc-install-python-dependencies ()
+    (interactive)
+    (python-environment-run (list "pip" "install" "-r" "bridge/requirements.txt" "-r" "bridge/dev_requirements.txt")))
+#+end_src
+
+*** Main program
+
+Note: in order to execute the following in babel mode, you may execute the following:
+
+#+begin_src elisp
+ (setq-local org-babel-python-command (python-environment-bin "python"))
+#+end_src
+
+#+RESULTS:
+: /Users/nicolas/.emacs.d/python-environment/bin/python
+
+#+begin_src python :tangle "bridge/main.py"
+  import time
+  import pybonjour
+  import OSC
+  import sys
+  import select
+
+  def monome_service_cb(sdRef, flags, interfaceIndex, errorCode, serviceName, regtype, replyDomain):
+       print 'hello %(regtype)s %(serviceName)s %(replyDomain)s' % locals()
+
+  print "browsing bonjour:"
+  with pybonjour.DNSServiceBrowse(regtype='_monome-osc._udp', callBack=monome_service_cb) as bonjour:
+       try:
+	    while True:
+		 ready = select.select([bonjour], [], [])
+		 if bonjour in ready[0]:
+		      pybonjour.DNSServiceProcessResult(bonjour)
+       except KeyboardInterrupt:
+	    pass
+
+  assert False, "not implemented yet %r" % (bonjour)
+#+end_src
+
+#+RESULTS:
