@@ -79,4 +79,17 @@ Prototyping the main loop:
   assert False, "not implemented yet %r" % (bonjour)
 #+end_src
 
-#+RESULTS:
+We will treat OSC incoming messages and transform them into emacs
+events, which can be bound to. (What do we do with values like those
+emitted by the arc.. Mouse like events?)
+
+"mouse-movement are represented by lists that look like (mouse-movement position)"
+see eventp function
+
+Emacs' command loop does not seem extensible..
+
+read-event, see Reading Input info section.
+
+Emacs will in turn send response events or response animations in the
+form of OSC bundle to animate on the device. (What if we want to
+cancel an animation?)
