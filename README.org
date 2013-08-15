@@ -54,6 +54,8 @@ Note: in order to execute the following in babel mode, you may execute the follo
 #+RESULTS:
 : /Users/nicolas/.emacs.d/python-environment/bin/python
 
+Prototyping the main loop:
+
 #+begin_src python :tangle "bridge/main.py"
   import time
   import pybonjour
