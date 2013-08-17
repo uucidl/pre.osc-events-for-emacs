@@ -61,7 +61,8 @@ python-environment package:
 Note: in order to execute the following in babel mode, you may execute the following:
 
 #+begin_src elisp
- (setq-local org-babel-python-command (python-environment-bin "python"))
+  (require 'python-environment)
+  (setq-local org-babel-python-command (python-environment-bin "python"))
 #+end_src
 
 #+RESULTS:
@@ -312,6 +313,7 @@ which will make Emacs' jobs much easier.
 Now, we can use this bridge program already to communicate with emacs using its process API:
 
 #+begin_src elisp
+  (require 'python-environment)
 
   ;; start the bridge process
   (setq osc-bridge-process
@@ -323,28 +325,32 @@ Now, we can use this bridge program already to communicate with emacs using its 
     (if (equal "/monome/enc/delta" (car msg))
 	(let ((delta (nth 2 msg)))
 	  (if (> 0 delta)
-	      (
 	       (scroll-down delta)
 	       (scroll-up (- delta))))))
 
   (defun osc-bridge-process-input-line (line)
     (let ((data (read line)))
-      (osc-bridge-message-handler (nth 3 data))))
+      (nth 3 data)))
 
   (defun osc-bridge-filter (proc string)
     (when (buffer-live-p (process-buffer proc))
-      (with-current-buffer (process-buffer proc)
-	(let ((moving (= (point) (process-mark proc))))
-	  (save-excursion
-	    ;; Insert the text, advancing the process marker.
-	    (goto-char (process-mark proc))
-	    (insert string)
-	    (let ((content (buffer-substring (point-min) (point))))
-	      (let ((lines (split-string content "\n" t)))
-		(mapc #'osc-bridge-process-input-line lines)))
-	    (delete-region (point-min) (point))
-	    (set-marker (process-mark proc) (point))
-	  (if moving (goto-char (process-mark proc))))))))
+      (let ((message-queue nil))
+	(with-current-buffer (process-buffer proc)
+	  (let ((moving (= (point) (process-mark proc))))
+	    (save-excursion
+	      ;; Insert the text, advancing the process marker.
+	      (goto-char (process-mark proc))
+	      (insert string)
+	      (let ((content (buffer-substring (point-min) (point))))
+		(let ((rev-lines (nreverse (split-string content "\n" nil))))
+		  (let ((last-line (car rev-lines)))
+		    (setq message-queue (mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
+		    (delete-region (point-min) (point))
+		    (insert last-line)))
+		(set-marker (process-mark proc) (point))
+		(if moving (goto-char (process-mark proc)))))))
+      (mapc #'osc-bridge-message-handler message-queue))))
+
   (set-process-filter osc-bridge-process #'osc-bridge-filter)
 
   (defun osc-send-message (client message)
