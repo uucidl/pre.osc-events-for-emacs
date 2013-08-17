@@ -309,6 +309,33 @@ which will make Emacs' jobs much easier.
 
 #+RESULTS:
 
+Now, we can use this bridge program already to communicate with emacs using its process API:
+
+#+begin_src elisp
+  ;; start the bridge process
+  (setq osc-bridge-process
+	(start-process "osc-bridge" "*osc-bridge*"
+		       (python-environment-bin "python") "bridge/osc.py"))
+
+  (defun osc-send-message (client message)
+    """send an osc message to the client"""
+    (if (and (not (listp message))
+	     (not (stringp (first message))))
+	(error (format "malformed message %s" message)))
+    (process-send-string
+     client
+     (format "%S\n" `(osc-packet "127.0.0.1:7016" "127.0.0.1:11033" ,message))))
+
+  ;; ask the monome for information
+  (osc-send-message osc-bridge-process '("/sys/info" "127.0.0.1" 7016))
+
+  ;; tell an arc to illuminate its ring
+  (osc-send-message osc-bridge-process '("/monome/ring/all" 0 14))
+  ;; turn it off
+  (osc-send-message osc-bridge-process '("/monome/ring/all" 0 0))
+
+#+end_src
+
 ** Using Mario Lang's OSC package
 
 The below is an experiment. The OSC package from Mario Lang does not
