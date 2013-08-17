@@ -75,13 +75,15 @@
 	    (lsh (logand f #XFF00) -8)
 	    (logand f #XFF))))
 
+(require 'bindat)
+
+(defvar osc-u32-spec
+  '((:value u32)))
+
 (defun osc-insert-int32 (value)
-  (let (bytes)
-    (dotimes (i 4)
-      (push (% value 256) bytes)
-      (setq value (/ value 256)))
-    (dolist (byte bytes)
-      (insert byte))))
+  (insert (bindat-pack
+	   osc-u32-spec
+	   `((:value . ,value)))))
 
 (defun osc-make-client (host port)
   (make-network-process
@@ -119,12 +121,20 @@
     (forward-char (- 4 (% (length string) 4)))
     string))
 
+(defun osc-uint32-to-int32 (u32)
+  (if (>= u32 #x80000000)
+      (- u32 4294967296)
+    u32))
+
 (defun osc-read-int32 ()
-  (let ((value 0))
-    (dotimes (i 4)
-      (setq value (logior (* value 256) (following-char)))
-      (forward-char 1))
-    value))
+  (osc-uint32-to-int32
+   (let ((value
+	  (bindat-get-field
+	   (bindat-unpack osc-u32-spec
+			  (buffer-substring-no-properties (point) (+ (point) 4)))
+	   :value)))
+     (forward-char 4)
+     value)))
 
 (defun osc-read-float32 ()
   (let ((s (lsh (logand (following-char) #X80) -7))
@@ -161,8 +171,8 @@ the generic handler for SERVER."
   (or (cdr (assoc path (plist-get (process-plist server) :handlers)))
       (plist-get (process-plist server) :generic)))
 
-(defun osc-filter (proc string)
-  (when (= (% (length string) 4) 0)
+(defun osc-filter-read-msg (string)
+  (when (equal 0 (% (length string) 4))
     (with-temp-buffer
       (set-buffer-multibyte nil)
       (insert string)
@@ -183,14 +193,29 @@ the generic handler for SERVER."
 	  (forward-char 8) ;skip 64-bit timetag
 	  (while (not (eobp))
 	    (let ((size (osc-read-int32)))
-	      (osc-filter proc
-			  (buffer-substring
-			   (point) (progn (forward-char size) (point)))))))))))
+	      (osc-filter-read-msg proc
+				   (buffer-substring
+				    (point) (progn (forward-char size) (point))))))))
+      (- (point) (point-min)))))
+
+(defun osc-filter (proc string)
+  (with-current-buffer (process-buffer proc)
+    (set-buffer-multibyte nil)
+    (goto-char (point-max))
+    (insert string)
+    (goto-char (point-min))
+    (let ((msg-length))
+      (while (setq msg-length (osc-filter-read-msg (buffer-string)))
+	(message (format "%s:%d" (buffer-substring (point) (+ (point) msg-length)) msg-length))
+	(delete-region (point) (+ (point) msg-length))))))
+
 
 (defun osc-make-server (host port default-handler)
   (make-network-process
    :name "OSCserver"
    :filter #'osc-filter
+   :filter-multibyte nil
+   :coding 'binary
    :host host
    :service port
    :server t

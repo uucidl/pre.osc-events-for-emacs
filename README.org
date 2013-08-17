@@ -96,6 +96,9 @@ cancel an animation?)
 
 ** Using Mario Lang's OSC package
 
+The below is an experiment. The OSC package from Mario Lang does not
+respond well to arc's negative offsets, even with my own hacks.
+
 #+begin_src elisp
   (setq mm-arc-client (osc-make-client "localhost" 11033))
 
@@ -110,14 +113,16 @@ cancel an animation?)
     (osc-make-server "localhost" port #'arc-server-callback))
 
   (defun arc-server-callback (path &rest args)
-    (message "OSC %s: %S" path args)
+    (message "OSC %s: %S" path args))
     (if (equal "/monome/enc/delta" path)
 	(let ((delta (nth 1 args)))
 	  (if (< 0 delta)
 	      (scroll-up (- delta))
 	    (scroll-down delta)))))
 
-  (setq mm-arc-server (mm-make-arc-server 7014))
+  (delete-process mm-arc-server)
+  (setq mm-arc-server (mm-make-arc-server 7016))
+  (set-process-buffer mm-arc-server (get-buffer-create "*OSC* mm-arc-server"))
 
   (defun mm-switch-frame (event)
     (interactive "e")
