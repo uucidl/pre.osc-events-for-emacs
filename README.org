@@ -43,6 +43,9 @@ python-environment package:
     (python-environment-run (list "pip" "install" "-r" "bridge/requirements.txt" "-r" "bridge/dev_requirements.txt")))
 #+end_src
 
+#+RESULTS:
+: emacs-osc-install-python-dependencies
+
 *** Main program
 
 Note: in order to execute the following in babel mode, you may execute the following:
@@ -79,25 +82,120 @@ Prototyping the main loop:
   assert False, "not implemented yet %r" % (bonjour)
 #+end_src
 
-We will treat OSC incoming messages and transform them into emacs
-events, which can be bound to. (What do we do with values like those
-emitted by the arc.. Mouse like events?)
+#+RESULTS:
 
-"mouse-movement are represented by lists that look like (mouse-movement position)"
-see eventp function
+An emacs elisp package will talk to the python bridge:
 
-Emacs' command loop does not seem extensible..
+#+begin_src dot :file arch.png
+  digraph g {
+	  monome_el -> osc_el;
+	  osc_el -> monome_el;
+	  monome_el -> python_bridge_process;
+	  python_bridge_process -> monome_el;
+	  osc_el -> python_bridge_process;
+	  python_bridge_process -> osc_el;
+	  osc_clients -> python_bridge_process;
+	  python_bridge_process -> osc_servers;
+  }
+#+end_src
 
-read-event, see Reading Input info section.
+#+RESULTS:
+[[file:arch.png]]
+
+
+We will treat OSC incoming messages in python and convert them into
+s-exp that emacs will then forward to user-handlers.
+
+We will treat user-sent responses/messages and convert them to OSC
+messages in python.
 
 Emacs will in turn send response events or response animations in the
 form of OSC bundle to animate on the device. (What if we want to
 cancel an animation?)
 
+The bonjour part is not absolutely critical, and can be split.
+
+We will define a python module converting osc messages into s-exp,
+which will make Emacs' jobs much easier.
+
+#+begin_src python :tangle "bridge/osc.py" :results output
+  # -*- coding: utf-8 -*-
+  import unittest
+
+  from OSC import OSCMessage
+
+  def osc_message_as_sexp(osc_message):
+      """converts an osc message into a s-expression"""
+
+      def sexp(arg):
+	  if isinstance(arg, basestring):
+	      return '"%s"' % arg.replace('"', '\\"')
+	  elif isinstance(arg, int):
+	      return '%r' % arg
+	  elif isinstance(arg, float):
+	      return '%r' % arg
+
+	  raise Exception('unsupported argument %r', arg)
+
+      if len(osc_message) > 0:
+	  return '(%s %s)' % (
+	      sexp(osc_message.address),
+	      ' '.join(sexp(v) for v in osc_message.values())
+	  )
+      return '(%s)' % (sexp(osc_message.address))
+
+
+
+  class TestOSCBridge(unittest.TestCase):
+       def test_osc_message_as_sexp_trigger(self):
+	    message = OSCMessage("/my/address")
+	    self.assertEquals('("/my/address")', osc_message_as_sexp(message))
+
+       def test_osc_message_as_sexp_integer(self):
+	    message = OSCMessage("/my/address")
+	    message.append(42)
+	    message.append(-100042)
+
+	    self.assertEquals('("/my/address" 42 -100042)', osc_message_as_sexp(message))
+
+       def test_osc_message_as_sexp_string(self):
+	    message = OSCMessage("/my/address")
+	    message.append('a string')
+
+	    self.assertEquals('("/my/address" "a string")', osc_message_as_sexp(message))
+
+       def test_osc_message_with_odd_strings(self):
+	    message = OSCMessage("/my/address")
+	    message.append(u'a \"string\"')
+
+	    self.assertEquals('("/my/address" "a \\"string\\"")', osc_message_as_sexp(message))
+
+
+       def test_osc_message_as_sexp_many(self):
+	    message = OSCMessage("/my/address")
+	    message.append(1)
+	    message.append('one')
+	    message.append(2)
+	    message.append('two')
+	    message.append(3)
+	    message.append('three')
+
+	    self.assertEquals('("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message))
+
+  if __name__ == "__main__":
+	    unittest.main()
+
+#+end_src
+
+#+RESULTS:
+
 ** Using Mario Lang's OSC package
 
 The below is an experiment. The OSC package from Mario Lang does not
 respond well to arc's negative offsets, even with my own hacks.
+
+It however gives an idea of the type of OSC api that can function
+within Emacs. Macking my package compatible would be a good idea.
 
 #+begin_src elisp
   (setq mm-arc-client (osc-make-client "localhost" 11033))
