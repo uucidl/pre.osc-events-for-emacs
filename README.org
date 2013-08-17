@@ -46,7 +46,7 @@ python-environment package:
 #+RESULTS:
 : emacs-osc-install-python-dependencies
 
-*** Main program
+** Main program
 
 Note: in order to execute the following in babel mode, you may execute the following:
 
