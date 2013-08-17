@@ -144,6 +144,10 @@ which will make Emacs' jobs much easier.
       def assert_roundtrip(self, message):
 	  self.assertEquals(message, sexp_to_osc_message(osc_message_as_sexp(message)))
 
+      def test_wrong_sexp(self):
+	  self.assertRaises(Exception, sexp_to_osc_message, "nil")
+	  self.assertRaises(Exception, sexp_to_osc_message, "()")
+
       def test_osc_message_as_sexp_trigger(self):
 	  message = OSCMessage("/my/address")
 	  self.assertEquals('("/my/address")', osc_message_as_sexp(message))
