@@ -14,6 +14,7 @@ First, let's create the requirements files:
 #+begin_src text :tangle "bridge/requirements.txt"
 pybonjour
 pyosc
+sexpdata
 #+end_src
 
 #+begin_src text :tangle "bridge/dev_requirements.txt"
@@ -121,69 +122,70 @@ which will make Emacs' jobs much easier.
 #+begin_src python :tangle "bridge/osc.py" :results output
   # -*- coding: utf-8 -*-
   import unittest
+  import sexpdata
 
   from OSC import OSCMessage
 
   def osc_message_as_sexp(osc_message):
       """converts an osc message into a s-expression"""
 
-      def sexp(arg):
-	  if isinstance(arg, basestring):
-	      return '"%s"' % arg.replace('"', '\\"')
-	  elif isinstance(arg, int):
-	      return '%r' % arg
-	  elif isinstance(arg, float):
-	      return '%r' % arg
+      return sexpdata.dumps([osc_message.address] + osc_message.values())
 
-	  raise Exception('unsupported argument %r', arg)
+  def sexp_to_osc_message(sexp):
+      data = sexpdata.loads(sexp)
+      if not data:
+	  raise Exception('not an osc message')
+      message = OSCMessage(data[0])
+      message.extend(data[1:])
 
-      if len(osc_message) > 0:
-	  return '(%s %s)' % (
-	      sexp(osc_message.address),
-	      ' '.join(sexp(v) for v in osc_message.values())
-	  )
-      return '(%s)' % (sexp(osc_message.address))
-
-
+      return message
 
   class TestOSCBridge(unittest.TestCase):
-       def test_osc_message_as_sexp_trigger(self):
-	    message = OSCMessage("/my/address")
-	    self.assertEquals('("/my/address")', osc_message_as_sexp(message))
+      def assert_roundtrip(self, message):
+	  self.assertEquals(message, sexp_to_osc_message(osc_message_as_sexp(message)))
 
-       def test_osc_message_as_sexp_integer(self):
-	    message = OSCMessage("/my/address")
-	    message.append(42)
-	    message.append(-100042)
+      def test_osc_message_as_sexp_trigger(self):
+	  message = OSCMessage("/my/address")
+	  self.assertEquals('("/my/address")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
 
-	    self.assertEquals('("/my/address" 42 -100042)', osc_message_as_sexp(message))
+      def test_osc_message_as_sexp_integer(self):
+	  message = OSCMessage("/my/address")
+	  message.append(42)
+	  message.append(-100042)
 
-       def test_osc_message_as_sexp_string(self):
-	    message = OSCMessage("/my/address")
-	    message.append('a string')
+	  self.assertEquals('("/my/address" 42 -100042)', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
 
-	    self.assertEquals('("/my/address" "a string")', osc_message_as_sexp(message))
+      def test_osc_message_as_sexp_string(self):
+	  message = OSCMessage("/my/address")
+	  message.append('a string')
 
-       def test_osc_message_with_odd_strings(self):
-	    message = OSCMessage("/my/address")
-	    message.append(u'a \"string\"')
+	  self.assertEquals('("/my/address" "a string")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
 
-	    self.assertEquals('("/my/address" "a \\"string\\"")', osc_message_as_sexp(message))
+      def test_osc_message_with_odd_strings(self):
+	  message = OSCMessage("/my/address")
+	  message.append(u'a \"string\"')
 
+	  self.assertEquals('("/my/address" "a \\"string\\"")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
 
-       def test_osc_message_as_sexp_many(self):
-	    message = OSCMessage("/my/address")
-	    message.append(1)
-	    message.append('one')
-	    message.append(2)
-	    message.append('two')
-	    message.append(3)
-	    message.append('three')
+      def test_osc_message_as_sexp_many(self):
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+	  message.append(2)
+	  message.append('two')
+	  message.append(3)
+	  message.append('three')
 
-	    self.assertEquals('("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message))
+	  self.assertEquals('("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
+
 
   if __name__ == "__main__":
-	    unittest.main()
+      unittest.main()
 
 #+end_src
 
