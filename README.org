@@ -7,7 +7,7 @@ We will use a separate process to bridge emacs to the OSC protocol.
 
 The process will be initially written in python.
 
-** Setup
+** TODO Setup
 
 First, let's create the requirements files:
 
@@ -19,6 +19,7 @@ sexpdata
 
 #+begin_src text :tangle "bridge/dev_requirements.txt"
 nose
+mox
 #+end_src
 
 And the two scrits init.sh and dev.sh, the first for use and the
@@ -121,26 +122,93 @@ which will make Emacs' jobs much easier.
 
 #+begin_src python :tangle "bridge/osc.py" :results output
   # -*- coding: utf-8 -*-
-  import unittest
+  import logging
+  import mox
+  import select
   import sexpdata
+  import unittest
 
-  from OSC import OSCMessage
+  from OSC import (
+    OSCClient,
+    OSCMessage,
+    OSCServer,
+  )
+  from StringIO import StringIO
+
+  OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
+
+  logger = logging.getLogger(__name__)
+
+  def osc_message_as_list(osc_message):
+      return [osc_message.address] + osc_message.values()
+
+  def list_to_osc_message(lst):
+      if not lst:
+	  raise Exception('not an osc message')
+      message = OSCMessage(lst[0])
+      message.extend(lst[1:])
+
+      return message
 
   def osc_message_as_sexp(osc_message):
       """converts an osc message into a s-expression"""
 
-      return sexpdata.dumps([osc_message.address] + osc_message.values())
+      return sexpdata.dumps(osc_message_as_list(osc_message))
 
   def sexp_to_osc_message(sexp):
       data = sexpdata.loads(sexp)
-      if not data:
-	  raise Exception('not an osc message')
-      message = OSCMessage(data[0])
-      message.extend(data[1:])
+      return list_to_osc_message(data)
 
-      return message
+  def packet_sexp(from_endpoint, to_endpoint, osc_message):
+      return sexpdata.dumps([
+	  OSC_PACKET_SYMBOL, from_endpoint, to_endpoint, osc_message_as_list(osc_message),
+      ])
+
+  def accept_message(stream, server, addr, tags, data, client_address):
+      logger.debug('received message %r', locals())
+
+      def format_address(address):
+	return '%s:%i' % address
+
+      message = OSCMessage(addr)
+      message.extend(data)
+
+      stream.write(
+	packet_sexp(format_address(client_address), format_address(server.address()), message) +
+	'\n'
+      )
+
+  def send_message(stream, client):
+      msg = stream.read()
+      lst = sexpdata.loads(msg)
+      if not lst:
+	raise Exception('unrecognized message %r!' % msg)
+
+      if not OSC_PACKET_SYMBOL == lst[0]:
+	raise Exception('unsupported message %r!' % msg)
+
+      to_address = lst[2].split(':')
+      to_address = to_address[0], int(to_address[1])
+      message = list_to_osc_message(lst[3])
+      client.sendto(message, to_address)
+      logger.debug('sent message %r %r', message, to_address)
+
+  class ServerHandler(object):
+    def __init__(self, server, stream):
+      self.server = server
+      self.stream = stream
+      server.addMsgHandler('default', self.sexp_accept_message)
+
+    def sexp_accept_message(self, addr, tags, data, client_address):
+      accept_message(self.stream, self.server, addr, tags, data, client_address)
 
   class TestOSCBridge(unittest.TestCase):
+      def setUp(self):
+	  self.mox = mox.Mox()
+
+      def tearDown(self):
+	  self.mox.UnsetStubs()
+
       def assert_roundtrip(self, message):
 	  self.assertEquals(message, sexp_to_osc_message(osc_message_as_sexp(message)))
 
@@ -187,9 +255,47 @@ which will make Emacs' jobs much easier.
 	  self.assertEquals('("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message))
 	  self.assert_roundtrip(message)
 
+      def test_received_message_envelope(self):
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+
+	  received_sexp = packet_sexp('Alice', 'Bob', message)
+	  self.assertEquals('(osc-packet "Alice" "Bob" ("/my/address" 1 "one"))', received_sexp)
+
+      def test_send_message(self):
+	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))'
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+
+	  client = self.mox.CreateMock(OSCClient)
+	  client.sendto(message, ("to_address", 1234))
+	  self.mox.ReplayAll()
+
+	  send_message (StringIO(line), client)
+	  self.mox.VerifyAll()
 
   if __name__ == "__main__":
-      unittest.main()
+      logging.basicConfig(level=logging.INFO)
+      #unittest.main()
+      import sys
+
+      server = OSCServer(('localhost', 7016))
+      ServerHandler(server, sys.stdout)
+      client = OSCClient()
+
+      try:
+	while True:
+	  ready = select.select([server.fileno(), sys.stdin], [], [])
+	  if server.fileno() in ready[0]:
+	    server.handle_request()
+	  if sys.stdin in ready[0]:
+	    line = sys.stdin.readline()
+	    logger.debug("got stdin input: %r", line)
+	    send_message(StringIO(line), client)
+      except KeyboardInterrupt:
+	pass
 
 #+end_src
 
