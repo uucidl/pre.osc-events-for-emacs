@@ -7,6 +7,14 @@ We will use a separate process to bridge emacs to the OSC protocol.
 
 The process will be initially written in python.
 
+** TODO Remove bonjour from requirements
+
+Finally the guys at http://monome.org decided to remove the bonjour
+requirement from serialosc, and serialosc now has its own discovery
+protocol, fortunately based on OSC.
+
+With this I should be able to remove all mentions below about bonjour.
+
 ** TODO Setup
 
 First, let's create the requirements files:
