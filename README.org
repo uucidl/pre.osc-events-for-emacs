@@ -315,18 +315,17 @@ Now, we can use this bridge program already to communicate with emacs using its 
 #+begin_src elisp
   (require 'python-environment)
 
-  ;; start the bridge process
-  (setq osc-bridge-process
-	(start-process "osc-bridge" "*osc-bridge*"
-		       (python-environment-bin "python") "bridge/osc.py"))
-
   (defun osc-bridge-message-handler (msg)
     (message (format "%S" msg))
     (if (equal "/monome/enc/delta" (car msg))
 	(let ((delta (nth 2 msg)))
 	  (if (> 0 delta)
 	       (scroll-down delta)
-	       (scroll-up (- delta))))))
+	       (scroll-up (- delta)))))
+    (if (equal '("/monome/grid/key" 0 7 1) msg)
+	(magit-status default-directory))
+    (if (equal '("/monome/grid/key" 0 6 1) msg)
+	(other-window 1)))
 
   (defun osc-bridge-process-input-line (line)
     (let ((data (read line)))
@@ -344,13 +343,18 @@ Now, we can use this bridge program already to communicate with emacs using its 
 	      (let ((content (buffer-substring (point-min) (point))))
 		(let ((rev-lines (nreverse (split-string content "\n" nil))))
 		  (let ((last-line (car rev-lines)))
-		    (setq message-queue (mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
+		    (setq message-queue
+			  (mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
 		    (delete-region (point-min) (point))
 		    (insert last-line)))
 		(set-marker (process-mark proc) (point))
 		(if moving (goto-char (process-mark proc)))))))
       (mapc #'osc-bridge-message-handler message-queue))))
 
+  ;; start the bridge process
+  (setq osc-bridge-process
+	(start-process "osc-bridge" "*osc-bridge*"
+		       (python-environment-bin "python") "bridge/osc.py"))
   (set-process-filter osc-bridge-process #'osc-bridge-filter)
 
   (defun osc-send-message (client message)
@@ -365,11 +369,33 @@ Now, we can use this bridge program already to communicate with emacs using its 
   ;; ask the monome for information
   (osc-send-message osc-bridge-process '("/sys/info" "127.0.0.1" 7016))
 
+  ;; take-focus
+  (osc-send-message osc-bridge-process '("/sys/host" "127.0.0.1"))
+  (osc-send-message osc-bridge-process '("/sys/port" 7016))
+
   ;; tell an arc to illuminate its ring
   (osc-send-message osc-bridge-process '("/monome/ring/all" 0 14))
   ;; turn it off
   (osc-send-message osc-bridge-process '("/monome/ring/all" 0 0))
 
+  (process-send-string
+   osc-bridge-process
+   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:12002" ("/serialosc/list" "127.0.0.1" 7016))))
+
+  ;; additional monome
+  (process-send-string
+   osc-bridge-process
+   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/sys/info" "127.0.0.1" 7016))))
+
+  (process-send-string
+   osc-bridge-process
+   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/sys/port" 7016))))
+
+  ;; want tilt?
+
+  (process-send-string
+   osc-bridge-process
+   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/monome/tilt/set" 0 0))))
 #+end_src
 
 ** Using Mario Lang's OSC package
