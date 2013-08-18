@@ -359,24 +359,30 @@ Now, we can use this bridge program already to communicate with emacs using its 
 
   (defun osc-send-message (client message)
     """send an osc message to the client"""
-    (if (and (not (listp message))
-	     (not (stringp (first message))))
-	(error (format "malformed message %s" message)))
-    (process-send-string
-     client
-     (format "%S\n" `(osc-packet "127.0.0.1:7016" "127.0.0.1:11033" ,message))))
+    (let ((process (car client))
+	  (endpoint (car (cdr client))))
+      (if (and (not (listp message))
+	       (not (stringp (first message))))
+	  (error (format "malformed message %s" message)))
+      (process-send-string
+       process
+       (format "%S\n" `(osc-packet "127.0.0.1:7016" ,endpoint ,message)))))
+
+  (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
+  (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033"))
 
   ;; ask the monome for information
-  (osc-send-message osc-bridge-process '("/sys/info" "127.0.0.1" 7016))
+  (osc-send-message *arc-client* '("/sys/info" "127.0.0.1" 7016))
 
   ;; take-focus
-  (osc-send-message osc-bridge-process '("/sys/host" "127.0.0.1"))
-  (osc-send-message osc-bridge-process '("/sys/port" 7016))
+  (dolist (client (list *arc-client* *grid64-client*))
+    (osc-send-message client '("/sys/host" "127.0.0.1"))
+    (osc-send-message client '("/sys/port" 7016)))
 
   ;; tell an arc to illuminate its ring
-  (osc-send-message osc-bridge-process '("/monome/ring/all" 0 14))
+  (osc-send-message *arc-client* '("/monome/ring/all" 0 14))
   ;; turn it off
-  (osc-send-message osc-bridge-process '("/monome/ring/all" 0 0))
+  (osc-send-message *arc-client* '("/monome/ring/all" 0 0))
 
   (process-send-string
    osc-bridge-process
@@ -397,6 +403,8 @@ Now, we can use this bridge program already to communicate with emacs using its 
    osc-bridge-process
    (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/monome/tilt/set" 0 0))))
 #+end_src
+
+#+RESULTS:
 
 ** Using Mario Lang's OSC package
 
