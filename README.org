@@ -1,4 +1,4 @@
-A bridge from emacs to OSC, with the intent to augment emacs with
+<A bridge from emacs to OSC, with the intent to augment emacs with
 monome.
 
 * OSC bridge process
@@ -7,20 +7,17 @@ We will use a separate process to bridge emacs to the OSC protocol.
 
 The process will be initially written in python.
 
-** TODO Remove bonjour from requirements
+** Monome, serialosc 1.2
 
-Finally the guys at http://monome.org decided to remove the bonjour
-requirement from serialosc, and serialosc now has its own discovery
-protocol, fortunately based on OSC.
-
-With this I should be able to remove all mentions below about bonjour.
+With serialosc 1.2, the guys at http://monome.org finally decided to
+remove the bonjour requirement from serialosc, and serialosc now has
+its own discovery protocol, fortunately based on OSC.
 
 ** TODO Setup
 
 First, let's create the requirements files:
 
 #+begin_src text :tangle "bridge/requirements.txt"
-pybonjour
 pyosc
 sexpdata
 #+end_src
@@ -68,31 +65,6 @@ Note: in order to execute the following in babel mode, you may execute the follo
 #+RESULTS:
 : /Users/nicolas/.emacs.d/python-environment/bin/python
 
-Prototyping the main loop:
-
-#+begin_src python :tangle "bridge/main.py"
-  import time
-  import pybonjour
-  import OSC
-  import sys
-  import select
-
-  def monome_service_cb(sdRef, flags, interfaceIndex, errorCode, serviceName, regtype, replyDomain):
-       print 'hello %(regtype)s %(serviceName)s %(replyDomain)s' % locals()
-
-  print "browsing bonjour:"
-  with pybonjour.DNSServiceBrowse(regtype='_monome-osc._udp', callBack=monome_service_cb) as bonjour:
-       try:
-	    while True:
-		 ready = select.select([bonjour], [], [])
-		 if bonjour in ready[0]:
-		      pybonjour.DNSServiceProcessResult(bonjour)
-       except KeyboardInterrupt:
-	    pass
-
-  assert False, "not implemented yet %r" % (bonjour)
-#+end_src
-
 #+RESULTS:
 
 An emacs elisp package will talk to the python bridge:
@@ -113,7 +85,6 @@ An emacs elisp package will talk to the python bridge:
 #+RESULTS:
 [[file:arch.png]]
 
-
 We will treat OSC incoming messages in python and convert them into
 s-exp that emacs will then forward to user-handlers.
 
@@ -123,8 +94,6 @@ messages in python.
 Emacs will in turn send response events or response animations in the
 form of OSC bundle to animate on the device. (What if we want to
 cancel an animation?)
-
-The bonjour part is not absolutely critical, and can be split.
 
 We will define a python module converting osc messages into s-exp,
 which will make Emacs' jobs much easier.
@@ -408,8 +377,9 @@ Now, we can use this bridge program already to communicate with emacs using its 
 
 ** Using Mario Lang's OSC package
 
-The below is an experiment. The OSC package from Mario Lang does not
-respond well to arc's negative offsets, even with my own hacks.
+I considered using Mario Lang's OSC package:
+- it does not respond well to arc's negative offsets
+- I attempted to fix it using bindat, which does support signed integers?
 
 It however gives an idea of the type of OSC api that can function
 within Emacs. Macking my package compatible would be a good idea.
@@ -451,6 +421,5 @@ within Emacs. Macking my package compatible would be a good idea.
   (mm-ask-info mm-arc-client)
 
   (delete-process mm-arc-server)
-
 
 #+end_src
