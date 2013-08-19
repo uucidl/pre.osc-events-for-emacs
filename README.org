@@ -1,4 +1,4 @@
-<A bridge from emacs to OSC, with the intent to augment emacs with
+A bridge from emacs to OSC, with the intent to augment emacs with
 monome.
 
 * OSC bridge process
@@ -281,7 +281,7 @@ which will make Emacs' jobs much easier.
 
 Now, we can use this bridge program already to communicate with emacs using its process API:
 
-#+begin_src elisp
+#+begin_src elisp :tangle osc.el
   (require 'python-environment)
 
   (defun osc-bridge-message-handler (msg)
