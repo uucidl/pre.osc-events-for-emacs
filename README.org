@@ -111,12 +111,46 @@ which will make Emacs' jobs much easier.
     OSCClient,
     OSCMessage,
     OSCServer,
+    OSCTimeTag,
   )
   from StringIO import StringIO
+
+  # for patching OSC's OSCTimeTag
+  import OSC
+  import math
+  import struct
 
   OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
 
   logger = logging.getLogger(__name__)
+
+  def fixedOSCTimeTag(time):
+	  """Convert a time in floating seconds to its
+	  OSC binary representation
+	  """
+
+	  if time > 0:
+		  fract, secs = math.modf(time)
+		  binary = struct.pack('>LL', long(secs), long(fract * 1e9))
+	  else:
+		  binary = struct.pack('>LL', 0L, 1L)
+
+	  return binary
+
+  def fixed_readTimeTag(data):
+	  """Tries to interpret the next 8 bytes of the data
+	  as a TimeTag.
+	   """
+	  high, low = struct.unpack(">LL", data[0:8])
+	  if (high == 0) and (low <= 1):
+		  time = 0.0
+	  else:
+		  time = int(high) + float(low / 1e9)
+	  rest = data[8:]
+	  return (time, rest)
+
+  OSC.OSCTimeTag = fixedOSCTimeTag
+  OSC._readTimeTag = fixed_readTimeTag
 
   def osc_message_as_list(osc_message):
       return [osc_message.address] + osc_message.values()
@@ -169,10 +203,10 @@ which will make Emacs' jobs much easier.
       to_address = lst[2].split(':')
       to_address = to_address[0], int(to_address[1])
       message = list_to_osc_message(lst[3])
-      timestamp = lst[4] if len(lst) > 4 else None
+      timestamp_sec = lst[4] if len(lst) > 4 else None
 
-      if timestamp is not None:
-	  bundle = OSCBundle(time=timestamp)
+      if timestamp_sec is not None:
+	  bundle = OSCBundle(time=timestamp_sec)
 	  bundle.extend([ message ])
 	  message = bundle
 
@@ -263,12 +297,13 @@ which will make Emacs' jobs much easier.
 	  self.mox.VerifyAll()
 
       def test_send_timestamped_message(self):
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") 123456789)'
+	  now_sec = 3585888401.168916
+	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)' % now_sec
 	  message = OSCMessage("/my/address")
 	  message.append(1)
 	  message.append('one')
 
-	  bundle = OSCBundle(time=123456789)
+	  bundle = OSCBundle(time=now_sec)
 	  bundle.extend([ message ])
 
 	  client = self.mox.CreateMock(OSCClient)
@@ -350,7 +385,11 @@ Now, we can use this bridge program already to communicate with emacs using its 
 		       (python-environment-bin "python") "bridge/osc.py"))
   (set-process-filter osc-bridge-process #'osc-bridge-filter)
 
-  (defun osc-send-message (client message)
+  (defun osc-timetag-in-seconds (time)
+    (let ((origin (encode-time 0 0 0 1 1 1900 t)))
+      (float-time (time-subtract time origin))))
+
+  (defun osc-send-message (client message &optional timestamp)
     """send an osc message to the client"""
     (let ((process (car client))
 	  (endpoint (car (cdr client))))
@@ -359,7 +398,9 @@ Now, we can use this bridge program already to communicate with emacs using its 
 	  (error (format "malformed message %s" message)))
       (process-send-string
        process
-       (format "%S\n" `(osc-packet "127.0.0.1:7016" ,endpoint ,message)))))
+       (format "%S\n" (if timestamp
+			  `(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
+			  `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
 
   (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
   (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033"))
@@ -395,6 +436,13 @@ Now, we can use this bridge program already to communicate with emacs using its 
   (process-send-string
    osc-bridge-process
    (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/monome/tilt/set" 0 0))))
+
+  (progn
+    ;; tell an arc to illuminate its ring now
+    (osc-send-message *arc-client* '("/monome/ring/all" 0 14))
+    ;; turn it off later
+    (osc-send-message *arc-client* '("/monome/ring/all" 0 0) (+ (osc-timetag-in-seconds (current-time)) 2.0)))
+
 #+end_src
 
 #+RESULTS:
