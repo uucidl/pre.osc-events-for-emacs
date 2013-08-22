@@ -18,7 +18,7 @@ its own discovery protocol, fortunately based on OSC.
 First, let's create the requirements files:
 
 #+begin_src text :tangle "bridge/requirements.txt"
-pyosc
+pyosc>=0.3.6
 sexpdata
 #+end_src
 
@@ -123,34 +123,6 @@ which will make Emacs' jobs much easier.
   OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
 
   logger = logging.getLogger(__name__)
-
-  def fixedOSCTimeTag(time):
-	  """Convert a time in floating seconds to its
-	  OSC binary representation
-	  """
-
-	  if time > 0:
-		  fract, secs = math.modf(time)
-		  binary = struct.pack('>LL', long(secs), long(fract * 1e9))
-	  else:
-		  binary = struct.pack('>LL', 0L, 1L)
-
-	  return binary
-
-  def fixed_readTimeTag(data):
-	  """Tries to interpret the next 8 bytes of the data
-	  as a TimeTag.
-	   """
-	  high, low = struct.unpack(">LL", data[0:8])
-	  if (high == 0) and (low <= 1):
-		  time = 0.0
-	  else:
-		  time = int(high) + float(low / 1e9)
-	  rest = data[8:]
-	  return (time, rest)
-
-  OSC.OSCTimeTag = fixedOSCTimeTag
-  OSC._readTimeTag = fixed_readTimeTag
 
   def osc_message_as_list(osc_message):
       return [osc_message.address] + osc_message.values()
@@ -320,7 +292,7 @@ which will make Emacs' jobs much easier.
 
       server = OSCServer(('localhost', 7016))
       ServerHandler(server, sys.stdout)
-      client = OSCClient()
+      client = OSCClient(server=server)
 
       try:
 	while True:
