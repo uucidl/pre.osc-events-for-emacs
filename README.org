@@ -100,6 +100,7 @@ which will make Emacs' jobs much easier.
 
 #+begin_src python :tangle "bridge/osc.py" :results output
   # -*- coding: utf-8 -*-
+  import argparse
   import logging
   import mox
   import select
@@ -286,11 +287,15 @@ which will make Emacs' jobs much easier.
 	  self.mox.VerifyAll()
 
   if __name__ == "__main__":
-      logging.basicConfig(level=logging.INFO)
+      parser = argparse.ArgumentParser()
+      parser.add_argument('--port', type=int, default=7016)
+      args = parser.parse_args()
+
+      logging.basicConfig(level=logging.ERROR)
       #unittest.main()
       import sys
 
-      server = OSCServer(('localhost', 7016))
+      server = OSCServer(('localhost', args.port))
       ServerHandler(server, sys.stdout)
       client = OSCClient(server=server)
 
