@@ -114,7 +114,9 @@ which will make Emacs' jobs much easier.
     OSCServer,
     OSCTimeTag,
   )
+  from threading import Thread
   from StringIO import StringIO
+  from contextlib import closing
 
   # for patching OSC's OSCTimeTag
   import OSC
@@ -297,19 +299,26 @@ which will make Emacs' jobs much easier.
 
       server = OSCServer(('localhost', args.port))
       ServerHandler(server, sys.stdout)
+      thread = Thread(target=lambda: server.serve_forever())
       client = OSCClient(server=server)
 
-      try:
-	while True:
-	  ready = select.select([server.fileno(), sys.stdin], [], [])
-	  if server.fileno() in ready[0]:
-	    server.handle_request()
-	  if sys.stdin in ready[0]:
-	    line = sys.stdin.readline()
-	    logger.debug("got stdin input: %r", line)
-	    send_message(StringIO(line), client)
-      except KeyboardInterrupt:
-	pass
+      thread.start()
+
+      with closing(server):
+	  while True:
+	      try:
+		  line = sys.stdin.readline()
+	      except KeyboardInterrupt:
+		  break
+
+	      if not line:
+		  break
+
+	      logger.debug("got stdin input: %r", line)
+	      send_message(StringIO(line), client)
+
+      thread.join()
+
 
 #+end_src
 
