@@ -351,12 +351,6 @@ Now, we can use this bridge program already to communicate with emacs using its 
 		(if moving (goto-char (process-mark proc)))))))
       (mapc #'osc-bridge-message-handler message-queue))))
 
-  ;; start the bridge process
-  (setq osc-bridge-process
-	(start-process "osc-bridge" "*osc-bridge*"
-		       (python-environment-bin "python") "bridge/osc.py"))
-  (set-process-filter osc-bridge-process #'osc-bridge-filter)
-
   (defun osc-timetag-in-seconds (time)
     (let ((origin (encode-time 0 0 0 1 1 1900 t)))
       (float-time (time-subtract time origin))))
@@ -374,8 +368,15 @@ Now, we can use this bridge program already to communicate with emacs using its 
 			  `(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
 			  `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
 
-  (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
-  (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033"))
+  ;; start the bridge process
+  (progn
+   (setq osc-bridge-process
+	 (start-process "osc-bridge" "*osc-bridge*"
+			(python-environment-bin "python") "bridge/osc.py"))
+   (set-process-filter osc-bridge-process #'osc-bridge-filter)
+
+   (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
+   (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033")))
 
   ;; ask the monome for information
   (osc-send-message *arc-client* '("/sys/info" "127.0.0.1" 7016))
