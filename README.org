@@ -97,6 +97,9 @@ which will make Emacs' jobs much easier.
   import mox
   import select
   import sexpdata
+  import sys
+  import time
+  import traceback
   import unittest
 
   from OSC import (
@@ -158,25 +161,36 @@ which will make Emacs' jobs much easier.
 	'\n'
       )
 
-  def send_message(stream, client):
-      msg = stream.read()
-      lst = sexpdata.loads(msg)
-      if not lst:
-	raise Exception('unrecognized message %r!' % msg)
+  def packet_osc(lst):
+      try:
+	  if not OSC_PACKET_SYMBOL == lst[0]:
+	    raise Exception('unsupported message %r!' % lst)
 
-      if not OSC_PACKET_SYMBOL == lst[0]:
-	raise Exception('unsupported message %r!' % msg)
-
-      to_address = lst[2].split(':')
-      to_address = to_address[0], int(to_address[1])
-      message = list_to_osc_message(lst[3])
-      timestamp_sec = lst[4] if len(lst) > 4 else None
+	  to_address = lst[2].split(':')
+	  to_address = to_address[0], int(to_address[1])
+	  message = list_to_osc_message(lst[3])
+	  timestamp_sec = lst[4] if len(lst) > 4 else None
+      except:
+	  etype, value, tb = sys.exc_info()
+	  raise Exception('unsupported message %s!:%s' % (
+	      lst, ''.join(traceback.format_exception(etype, value, tb))
+	  ))
 
       if timestamp_sec is not None:
 	  bundle = OSCBundle(time=timestamp_sec)
 	  bundle.extend([ message ])
 	  message = bundle
 
+      return message, (to_address)
+
+
+  def send_message(stream, client):
+      msg = stream.read()
+      lst = sexpdata.loads(msg)
+      if not lst:
+	raise Exception('unrecognized message %r!' % msg)
+
+      message, to_address = packet_osc(lst)
       client.sendto(message, to_address)
       logger.debug('sent message %r %r', message, to_address)
 
@@ -247,8 +261,15 @@ which will make Emacs' jobs much easier.
 	  message.append(1)
 	  message.append('one')
 
-	  received_sexp = packet_sexp('Alice', 'Bob', message)
-	  self.assertEquals('(osc-packet "Alice" "Bob" ("/my/address" 1 "one"))', received_sexp)
+	  received_sexp = packet_sexp('Alice:1', 'Bob:3', message)
+	  self.assertEquals('(osc-packet "Alice:1" "Bob:3" ("/my/address" 1 "one"))', received_sexp)
+
+	  parsed_osc_message, to_address = packet_osc(
+	      sexpdata.loads(received_sexp)
+	  )
+	  self.assertEquals(("Bob", 3), to_address)
+	  self.assertEquals(message, parsed_osc_message)
+
 
       def test_send_message(self):
 	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))'
@@ -264,7 +285,7 @@ which will make Emacs' jobs much easier.
 	  self.mox.VerifyAll()
 
       def test_send_timestamped_message(self):
-	  now_sec = 3585888401.168916
+	  now_sec = 1377246142.54
 	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)' % now_sec
 	  message = OSCMessage("/my/address")
 	  message.append(1)
@@ -310,8 +331,6 @@ which will make Emacs' jobs much easier.
 	      send_message(StringIO(line), client)
 
       thread.join()
-
-
 #+end_src
 
 #+RESULTS:
