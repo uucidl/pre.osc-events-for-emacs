@@ -438,9 +438,10 @@ Now, we can use this bridge program already to communicate with emacs using its 
 
 #+RESULTS:
 
-Now we would like to be able to send sequences in advance from emacs,
+We would like to be able to send sequences in advance from emacs,
 especially to do simple feedback animations such as lighting up a
-button and turning it off.
+button and turning it off. This requires passing a timetag to the OSC
+ message, so that it can be enqueued and played at a later time.
 
 #+begin_src elisp
   ;; start the bridge process
