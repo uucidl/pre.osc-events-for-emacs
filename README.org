@@ -66,14 +66,11 @@ An emacs elisp package will talk to the python bridge:
 
 #+begin_src dot :file arch.png
   digraph g {
-	  monome_el -> osc_el;
-	  osc_el -> monome_el;
-	  monome_el -> python_bridge_process;
-	  python_bridge_process -> monome_el;
-	  osc_el -> python_bridge_process;
-	  python_bridge_process -> osc_el;
-	  osc_clients -> python_bridge_process;
-	  python_bridge_process -> osc_servers;
+	  osc_el -> python_bridge_process [label="s-exp packets"];
+	  python_bridge_process -> osc_el [label="s-exp packets"];
+	  osc_clients -> python_bridge_process [label="OSC"];
+	  python_bridge_process -> osc_servers [label="OSC"];
+	  python_bridge_process -> python_bridge_process [label="deferred OSC"];
   }
 #+end_src
 
@@ -83,8 +80,8 @@ An emacs elisp package will talk to the python bridge:
 We will treat OSC incoming messages in python and convert them into
 s-exp that emacs will then forward to user-handlers.
 
-We will treat user-sent responses/messages and convert them to OSC
-messages in python.
+Each user-sent message is also accepted as a s-expression and
+converted to OSC messages in python.
 
 Emacs will in turn send response events or response animations in the
 form of OSC bundle to animate on the device. (What if we want to
