@@ -62,11 +62,6 @@ Note: in order to execute the following in babel mode, you may execute the follo
   (setq-local org-babel-python-command (python-environment-bin "python"))
 #+end_src
 
-#+RESULTS:
-: /Users/nicolas/.emacs.d/python-environment/bin/python
-
-#+RESULTS:
-
 An emacs elisp package will talk to the python bridge:
 
 #+begin_src dot :file arch.png
