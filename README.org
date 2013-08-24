@@ -287,10 +287,14 @@ prints to a text stream:
       def __init__(self, server, stream):
 	  self.server = server
 	  self.stream = stream
-	  server.addMsgHandler('default', self.sexp_accept_message)
+	  server.addMsgHandler('default', self.accept_message)
+	  server.addMsgHandler('deferred', self.accept_deferred_message)
 
-      def sexp_accept_message(self, addr, tags, data, client_address):
+      def accept_message(self, addr, tags, data, client_address):
 	  accept_message(self.stream, self.server, addr, tags, data, client_address)
+
+      def accept_deferred_message(self, addr, tags, data, client_address):
+	  accept_deferred_message(self.server.client, addr, tags, data, client_address)
 #+end_src
 
 The bridge accepts s-expression from its text stream and turn them
@@ -299,15 +303,20 @@ into OSC messages, then send them to the client:
 #+name: outbound-osc-communication
 #+begin_src python
 
-def send_message(stream, client):
-    msg = stream.read()
-    lst = sexpdata.loads(msg)
-    if not lst:
-      raise Exception('unrecognized message %r!' % msg)
+  def send_message(stream, client, server):
+      msg = stream.read()
+      lst = sexpdata.loads(msg)
+      if not lst:
+	raise Exception('unrecognized message %r!' % msg)
 
-    message, to_address = messages.packet_osc(lst)
-    client.sendto(message, to_address)
-    logger.debug('sent message %r %r', message, to_address)
+      message, to_address = messages.packet_osc(lst)
+
+      if isinstance(message, OSCBundle):
+	  send_deferred_message(client, server, message, to_address)
+      else:
+	  client.sendto(message, to_address)
+
+      logger.debug('sent message %r %r', message, to_address)
 
 #+end_src
 
@@ -319,7 +328,7 @@ recipient
 #+name: deferred-osc-communication
 #+begin_src python
   def wrap_deferred(bundle, to_address):
-      new_bundle = OSCBundle(address='deferred', time=bundle.timetag)
+      new_bundle = OSCBundle(address='/deferred', time=bundle.timetag)
       for msg in bundle.values():
 	  new_bundle.append(['%s:%i' % to_address, msg.address, msg.values()])
 
@@ -349,7 +358,7 @@ recipient
   def send_deferred_message(client, server, bundle, to_address):
       """send a message with a timestamp in the future"""
 
-      client.sendto(wrap_deferred(bundle, to_address), server.address)
+      client.sendto(wrap_deferred(bundle, to_address), server.address())
 
   class TestDeferred(unittest.TestCase):
       def setUp(self):
@@ -456,7 +465,7 @@ And the main programs ties everything together:
 		  break
 
 	      logger.debug("got stdin input: %r", line)
-	      send_message(StringIO(line), client)
+	      send_message(StringIO(line), client, server)
 
       thread.join()
 
@@ -487,27 +496,33 @@ And the main programs ties everything together:
 
 	  client = self.mox.CreateMock(OSCClient)
 	  client.sendto(message, ("to_address", 1234))
+	  server = self.mox.CreateMock(OSCServer)
 	  self.mox.ReplayAll()
 
-	  send_message (StringIO(line), client)
+	  send_message (StringIO(line), client, server)
 	  self.mox.VerifyAll()
 
       def test_send_deferred_message(self):
 	  now_sec = 100000.0
 	  message = OSCBundle("/my/address", time=now_sec + 2.0)
 	  message.append(1)
+	  address = ('to_address', 1234)
 
 	  self.mox.StubOutWithMock(messages, 'packet_osc')
 	  messages.packet_osc(mox.IgnoreArg()).AndReturn(
-	      (message, ('to_address', 1234))
+	      (message, address)
 	  )
 
 	  line = '(osc-packet "dummy")'
+
 	  client = self.mox.CreateMock(OSCClient)
-	  client.sendto(message, ("to_address", 1234))
+	  server = self.mox.CreateMock(OSCServer)
+	  self.mox.StubOutWithMock(sys.modules[__name__], 'send_deferred_message')
+	  send_deferred_message(client, server, message, address)
+
 	  self.mox.ReplayAll()
 
-	  send_message (StringIO(line), client)
+	  send_message (StringIO(line), client, server)
 	  self.mox.VerifyAll()
 
 #+end_src
