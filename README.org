@@ -260,7 +260,60 @@ which will make Emacs' jobs much easier.
 
 *** Server communication
 
-#+begin_src python :tangle "bridge/main.py" :results output
+We set up one server and one client using the pyOSC library.
+
+The server accepts OSC messages and turn them into s-expressions, which it
+prints to a text stream:
+
+#+name: inbound-osc-communication
+#+begin_src python
+
+  def accept_message(stream, server, addr, tags, data, client_address):
+      logger.debug('received message %r', locals())
+
+      def format_address(address):
+	return '%s:%i' % address
+
+      message = OSCMessage(addr)
+      message.extend(data)
+
+      stream.write(
+	messages.packet_sexp(format_address(client_address), format_address(server.address()), message) +
+	'\n'
+      )
+
+  class ServerHandler(object):
+      """install callback turning messages into s-expressions"""
+      def __init__(self, server, stream):
+	  self.server = server
+	  self.stream = stream
+	  server.addMsgHandler('default', self.sexp_accept_message)
+
+      def sexp_accept_message(self, addr, tags, data, client_address):
+	  accept_message(self.stream, self.server, addr, tags, data, client_address)
+#+end_src
+
+The bridge accepts s-expression from its text stream and turn them
+into OSC messages, then send them to the client:
+
+#+name: outbound-osc-communication
+#+begin_src python
+
+def send_message(stream, client):
+    msg = stream.read()
+    lst = sexpdata.loads(msg)
+    if not lst:
+      raise Exception('unrecognized message %r!' % msg)
+
+    message, to_address = messages.packet_osc(lst)
+    client.sendto(message, to_address)
+    logger.debug('sent message %r %r', message, to_address)
+
+#+end_src
+
+And the main programs ties everything together:
+
+#+begin_src python :tangle "bridge/main.py" :results output :noweb yes
   import argparse
   import logging
   import mox
@@ -282,39 +335,9 @@ which will make Emacs' jobs much easier.
 
   logger = logging.getLogger(__name__)
 
-  def accept_message(stream, server, addr, tags, data, client_address):
-      logger.debug('received message %r', locals())
+  <<inbound-osc-communication>>
 
-      def format_address(address):
-	return '%s:%i' % address
-
-      message = OSCMessage(addr)
-      message.extend(data)
-
-      stream.write(
-	messages.packet_sexp(format_address(client_address), format_address(server.address()), message) +
-	'\n'
-      )
-
-  def send_message(stream, client):
-      msg = stream.read()
-      lst = sexpdata.loads(msg)
-      if not lst:
-	raise Exception('unrecognized message %r!' % msg)
-
-      message, to_address = messages.packet_osc(lst)
-      client.sendto(message, to_address)
-      logger.debug('sent message %r %r', message, to_address)
-
-  class ServerHandler(object):
-    def __init__(self, server, stream):
-      self.server = server
-      self.stream = stream
-      server.addMsgHandler('default', self.sexp_accept_message)
-
-    def sexp_accept_message(self, addr, tags, data, client_address):
-      accept_message(self.stream, self.server, addr, tags, data, client_address)
-
+  <<outbound-osc-communication>>
 
   if __name__ == "__main__":
       parser = argparse.ArgumentParser()
