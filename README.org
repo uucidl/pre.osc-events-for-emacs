@@ -311,6 +311,62 @@ def send_message(stream, client):
 
 #+end_src
 
+Since we cannot trust devices to support message enqueuing, we will by
+default enqueue them instead as special "deferred" messages which will
+be treated by our server then echoed back to the original intended
+recipient
+
+#+name: deferred-osc-communication
+#+begin_src python
+  def accept_deferred_message(client, addr, tags, data, client_address):
+      """deferred messages are proxied through our server"""
+
+      # addr and client_address are ourselves
+
+      # unpacking the message contained in this message
+      to_address = data[0].split(':')
+      to_address = to_address[0], int(to_address[1])
+      message = OSCMessage(data[1])
+      message.extend(data[2:])
+
+      client.sendto(message, to_address)
+
+  def send_deferred_message(client, server, bundle, to_address):
+      """send a message with a timestamp in the future"""
+
+      new_bundle = OSCBundle(address='deferred', time=bundle.timetag)
+      for msg in bundle.values():
+	  new_bundle.append(['%s:%i' % to_address, msg.address, msg.values()])
+
+      client.sendto(new_bundle, server.address)
+
+  class TestDeferred(unittest.TestCase):
+      def setUp(self):
+	  self.mox = mox.Mox()
+
+      def tearDown(self):
+	  self.mox.UnsetStubs()
+
+      def test_send_deferred_message(self):
+	  now_sec = 123300.0
+	  bundle = OSCBundle(time=now_sec)
+	  message = OSCMessage('/hello')
+	  message.append(['1 2 3'])
+	  bundle.append(message)
+
+	  server = self.mox.CreateMock(OSCServer)
+	  server.address = ('localhost', 5678)
+
+	  client = self.mox.CreateMock(OSCClient)
+	  client.sendto(mox.IgnoreArg(), ('localhost', 5678))
+	  self.mox.ReplayAll()
+
+	  send_deferred_message(client, server, bundle, ('localhost', 1234))
+	  self.mox.VerifyAll()
+
+
+#+end_src
+
 And the main programs ties everything together:
 
 #+begin_src python :tangle "bridge/main.py" :results output :noweb yes
@@ -338,6 +394,8 @@ And the main programs ties everything together:
   <<inbound-osc-communication>>
 
   <<outbound-osc-communication>>
+
+  <<deferred-osc-communication>>
 
   if __name__ == "__main__":
       parser = argparse.ArgumentParser()
