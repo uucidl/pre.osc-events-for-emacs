@@ -264,11 +264,8 @@ which will make Emacs' jobs much easier.
   import argparse
   import logging
   import mox
-  import select
   import sexpdata
   import sys
-  import time
-  import traceback
   import unittest
 
   from OSC import (
@@ -276,16 +273,10 @@ which will make Emacs' jobs much easier.
     OSCClient,
     OSCMessage,
     OSCServer,
-    OSCTimeTag,
   )
   from threading import Thread
   from StringIO import StringIO
   from contextlib import closing
-
-  # for patching OSC's OSCTimeTag
-  import OSC
-  import math
-  import struct
 
   import messages
 
