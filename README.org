@@ -85,10 +85,180 @@ Emacs will in turn send response events or response animations in the
 form of OSC bundle to animate on the device. (What if we want to
 cancel an animation?)
 
+*** OSC to S-Expr and back
+
 We will define a python module converting osc messages into s-exp,
 which will make Emacs' jobs much easier.
 
-Here is the test case showing usage and expected behaviour:
+#+begin_src python :tangle "bridge/messages.py" :results output
+  import mox
+  import sexpdata
+  import time
+  import unittest
+
+  from OSC import (
+    OSCBundle,
+    OSCMessage,
+  )
+
+  OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
+
+  def osc_message_as_list(osc_message):
+      return [osc_message.address] + osc_message.values()
+
+  def list_to_osc_message(lst):
+      if not lst:
+	  raise Exception('not an osc message')
+      message = OSCMessage(lst[0])
+      message.extend(lst[1:])
+
+      return message
+
+  def osc_message_as_sexp(osc_message):
+      """converts an osc message into a s-expression"""
+
+      return sexpdata.dumps(osc_message_as_list(osc_message))
+
+  def sexp_to_osc_message(sexp):
+      data = sexpdata.loads(sexp)
+      return list_to_osc_message(data)
+
+  def packet_sexp(from_endpoint, to_endpoint, osc_message):
+      return sexpdata.dumps([
+	  OSC_PACKET_SYMBOL, from_endpoint, to_endpoint, osc_message_as_list(osc_message),
+      ])
+
+  def packet_osc(lst):
+      try:
+	  if not OSC_PACKET_SYMBOL == lst[0]:
+	    raise Exception('unsupported message %r!' % lst)
+
+	  to_address = lst[2].split(':')
+	  to_address = to_address[0], int(to_address[1])
+	  message = list_to_osc_message(lst[3])
+	  timestamp = lst[4] if len(lst) > 4 else None
+      except:
+	  etype, value, tb = sys.exc_info()
+	  raise Exception('unsupported message %s!:%s' % (
+	      lst, ''.join(traceback.format_exception(etype, value, tb))
+	  ))
+
+      if timestamp is None:
+	  timestamp_sec = None
+      elif isinstance(timestamp, float):
+	  timestamp_sec = timestamp
+      elif timestamp[0] == sexpdata.Symbol('relative'):
+	  timestamp_sec = time.time() + timestamp[1]
+
+      if timestamp_sec is not None:
+	  bundle = OSCBundle(time=timestamp_sec)
+	  bundle.extend([ message ])
+	  message = bundle
+
+      return message, (to_address)
+
+  class TestMessages(unittest.TestCase):
+      def setUp(self):
+	  self.mox = mox.Mox()
+
+      def tearDown(self):
+	  self.mox.UnsetStubs()
+
+      def assert_roundtrip(self, message):
+	  self.assertEquals(message, sexp_to_osc_message(osc_message_as_sexp(message)))
+
+      def test_wrong_sexp(self):
+	  self.assertRaises(Exception, sexp_to_osc_message, "nil")
+	  self.assertRaises(Exception, sexp_to_osc_message, "()")
+
+      def test_osc_message_as_sexp_trigger(self):
+	  message = OSCMessage("/my/address")
+	  self.assertEquals('("/my/address")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
+
+      def test_osc_message_as_sexp_integer(self):
+	  message = OSCMessage("/my/address")
+	  message.append(42)
+	  message.append(-100042)
+
+	  self.assertEquals('("/my/address" 42 -100042)', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
+
+      def test_osc_message_as_sexp_string(self):
+	  message = OSCMessage("/my/address")
+	  message.append('a string')
+
+	  self.assertEquals('("/my/address" "a string")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
+
+      def test_osc_message_with_odd_strings(self):
+	  message = OSCMessage("/my/address")
+	  message.append(u'a \"string\"')
+
+	  self.assertEquals('("/my/address" "a \\"string\\"")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
+
+      def test_osc_message_as_sexp_many(self):
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+	  message.append(2)
+	  message.append('two')
+	  message.append(3)
+	  message.append('three')
+
+	  self.assertEquals('("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message))
+	  self.assert_roundtrip(message)
+
+      def test_message_envelope(self):
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+
+	  received_sexp = packet_sexp('Alice:1', 'Bob:3', message)
+	  self.assertEquals('(osc-packet "Alice:1" "Bob:3" ("/my/address" 1 "one"))', received_sexp)
+
+	  parsed_osc_message, to_address = packet_osc(
+	      sexpdata.loads(received_sexp)
+	  )
+	  self.assertEquals(("Bob", 3), to_address)
+	  self.assertEquals(message, parsed_osc_message)
+
+      def test_timestamped_message_envelope(self):
+	  now_sec = 1377246142.54
+	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)' % now_sec
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+
+	  bundle = OSCBundle(time=now_sec)
+	  bundle.extend([ message ])
+	  self.assertEquals((bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line)))
+
+      def test_relative_timestamps_in_envelopes(self):
+	  now_sec = 1377246142.54
+	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") (relative 2.0))'
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+
+	  bundle = OSCBundle(time=now_sec + 2.0)
+	  bundle.extend([ message ])
+
+	  self.mox.StubOutWithMock(time, 'time')
+	  time.time().AndReturn(now_sec)
+	  self.mox.ReplayAll()
+
+	  self.assertEquals((bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line)))
+	  self.mox.VerifyAll()
+
+  if __name__ == "__main__":
+      unittest.main(verbosity=2)
+#+end_src
+
+#+RESULTS:
+
+*** Server communication
 
 #+begin_src python :tangle "bridge/selftest/test_osc.py" :results output
   import mox
@@ -220,7 +390,7 @@ Here is the test case showing usage and expected behaviour:
 
   if __name__ == "__main__":
       unittest.main(verbosity=2)
-#+end_src
+  #+end_src
 
 Most of the implementation of osc.py relies on the sexpdata module to
 perform sexp parsing.
@@ -251,34 +421,9 @@ perform sexp parsing.
   import math
   import struct
 
-  OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
+  from messages import *
 
   logger = logging.getLogger(__name__)
-
-  def osc_message_as_list(osc_message):
-      return [osc_message.address] + osc_message.values()
-
-  def list_to_osc_message(lst):
-      if not lst:
-	  raise Exception('not an osc message')
-      message = OSCMessage(lst[0])
-      message.extend(lst[1:])
-
-      return message
-
-  def osc_message_as_sexp(osc_message):
-      """converts an osc message into a s-expression"""
-
-      return sexpdata.dumps(osc_message_as_list(osc_message))
-
-  def sexp_to_osc_message(sexp):
-      data = sexpdata.loads(sexp)
-      return list_to_osc_message(data)
-
-  def packet_sexp(from_endpoint, to_endpoint, osc_message):
-      return sexpdata.dumps([
-	  OSC_PACKET_SYMBOL, from_endpoint, to_endpoint, osc_message_as_list(osc_message),
-      ])
 
   def accept_message(stream, server, addr, tags, data, client_address):
       logger.debug('received message %r', locals())
@@ -293,36 +438,6 @@ perform sexp parsing.
 	packet_sexp(format_address(client_address), format_address(server.address()), message) +
 	'\n'
       )
-
-  def packet_osc(lst):
-      try:
-	  if not OSC_PACKET_SYMBOL == lst[0]:
-	    raise Exception('unsupported message %r!' % lst)
-
-	  to_address = lst[2].split(':')
-	  to_address = to_address[0], int(to_address[1])
-	  message = list_to_osc_message(lst[3])
-	  timestamp = lst[4] if len(lst) > 4 else None
-      except:
-	  etype, value, tb = sys.exc_info()
-	  raise Exception('unsupported message %s!:%s' % (
-	      lst, ''.join(traceback.format_exception(etype, value, tb))
-	  ))
-
-      if timestamp is None:
-	  timestamp_sec = None
-      elif isinstance(timestamp, float):
-	  timestamp_sec = timestamp
-      elif timestamp[0] == sexpdata.Symbol('relative'):
-	  timestamp_sec = time.time() + timestamp[1]
-
-      if timestamp_sec is not None:
-	  bundle = OSCBundle(time=timestamp_sec)
-	  bundle.extend([ message ])
-	  message = bundle
-
-      return message, (to_address)
-
 
   def send_message(stream, client):
       msg = stream.read()
