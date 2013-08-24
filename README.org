@@ -260,150 +260,16 @@ which will make Emacs' jobs much easier.
 
 *** Server communication
 
-#+begin_src python :tangle "bridge/selftest/test_osc.py" :results output
-  import mox
-  import os.path
-  import sys
-  import unittest
-
-  sys.path += [ os.path.dirname(__file__) ]
-
-  from osc import *
-
-  class TestOSCBridge(unittest.TestCase):
-      def setUp(self):
-	  self.mox = mox.Mox()
-
-      def tearDown(self):
-	  self.mox.UnsetStubs()
-
-      def assert_roundtrip(self, message):
-	  self.assertEquals(message, sexp_to_osc_message(osc_message_as_sexp(message)))
-
-      def test_wrong_sexp(self):
-	  self.assertRaises(Exception, sexp_to_osc_message, "nil")
-	  self.assertRaises(Exception, sexp_to_osc_message, "()")
-
-      def test_osc_message_as_sexp_trigger(self):
-	  message = OSCMessage("/my/address")
-	  self.assertEquals('("/my/address")', osc_message_as_sexp(message))
-	  self.assert_roundtrip(message)
-
-      def test_osc_message_as_sexp_integer(self):
-	  message = OSCMessage("/my/address")
-	  message.append(42)
-	  message.append(-100042)
-
-	  self.assertEquals('("/my/address" 42 -100042)', osc_message_as_sexp(message))
-	  self.assert_roundtrip(message)
-
-      def test_osc_message_as_sexp_string(self):
-	  message = OSCMessage("/my/address")
-	  message.append('a string')
-
-	  self.assertEquals('("/my/address" "a string")', osc_message_as_sexp(message))
-	  self.assert_roundtrip(message)
-
-      def test_osc_message_with_odd_strings(self):
-	  message = OSCMessage("/my/address")
-	  message.append(u'a \"string\"')
-
-	  self.assertEquals('("/my/address" "a \\"string\\"")', osc_message_as_sexp(message))
-	  self.assert_roundtrip(message)
-
-      def test_osc_message_as_sexp_many(self):
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-	  message.append(2)
-	  message.append('two')
-	  message.append(3)
-	  message.append('three')
-
-	  self.assertEquals('("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message))
-	  self.assert_roundtrip(message)
-
-      def test_received_message_envelope(self):
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  received_sexp = packet_sexp('Alice:1', 'Bob:3', message)
-	  self.assertEquals('(osc-packet "Alice:1" "Bob:3" ("/my/address" 1 "one"))', received_sexp)
-
-	  parsed_osc_message, to_address = packet_osc(
-	      sexpdata.loads(received_sexp)
-	  )
-	  self.assertEquals(("Bob", 3), to_address)
-	  self.assertEquals(message, parsed_osc_message)
-
-
-      def test_send_message(self):
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))'
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  client = self.mox.CreateMock(OSCClient)
-	  client.sendto(message, ("to_address", 1234))
-	  self.mox.ReplayAll()
-
-	  send_message (StringIO(line), client)
-	  self.mox.VerifyAll()
-
-      def test_send_timestamped_message(self):
-	  now_sec = 1377246142.54
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)' % now_sec
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  bundle = OSCBundle(time=now_sec)
-	  bundle.extend([ message ])
-
-	  client = self.mox.CreateMock(OSCClient)
-	  client.sendto(bundle, ("to_address", 1234))
-	  self.mox.ReplayAll()
-
-	  send_message (StringIO(line), client)
-	  self.mox.VerifyAll()
-
-      def test_send_relative_timestamped_message(self):
-	  now_sec = 1377246142.54
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") (relative 2.0))'
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  bundle = OSCBundle(time=now_sec + 2.0)
-	  bundle.extend([ message ])
-
-	  self.mox.StubOutWithMock(time, 'time')
-	  time.time().AndReturn(now_sec)
-	  client = self.mox.CreateMock(OSCClient)
-	  client.sendto(bundle, ("to_address", 1234))
-	  time.time().AndReturn(now_sec + 0.05)
-	  self.mox.ReplayAll()
-
-	  send_message (StringIO(line), client)
-	  self.mox.VerifyAll()
-
-  if __name__ == "__main__":
-      unittest.main(verbosity=2)
-  #+end_src
-
-Most of the implementation of osc.py relies on the sexpdata module to
-perform sexp parsing.
-
-#+begin_src python :tangle "bridge/osc.py" :results output
-  # -*- coding: utf-8 -*-
+#+begin_src python :tangle "bridge/main.py" :results output
   import argparse
   import logging
+  import mox
   import select
   import sexpdata
   import sys
   import time
   import traceback
+  import unittest
 
   from OSC import (
     OSCBundle,
@@ -421,7 +287,7 @@ perform sexp parsing.
   import math
   import struct
 
-  from messages import *
+  import messages
 
   logger = logging.getLogger(__name__)
 
@@ -435,7 +301,7 @@ perform sexp parsing.
       message.extend(data)
 
       stream.write(
-	packet_sexp(format_address(client_address), format_address(server.address()), message) +
+	messages.packet_sexp(format_address(client_address), format_address(server.address()), message) +
 	'\n'
       )
 
@@ -445,7 +311,7 @@ perform sexp parsing.
       if not lst:
 	raise Exception('unrecognized message %r!' % msg)
 
-      message, to_address = packet_osc(lst)
+      message, to_address = messages.packet_osc(lst)
       client.sendto(message, to_address)
       logger.debug('sent message %r %r', message, to_address)
 
@@ -489,6 +355,27 @@ perform sexp parsing.
 	      send_message(StringIO(line), client)
 
       thread.join()
+
+  class TestMain(unittest.TestCase):
+      def setUp(self):
+	  self.mox = mox.Mox()
+
+      def tearDown(self):
+	  self.mox.UnsetStubs()
+
+      def test_send_message(self):
+	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))'
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+
+	  client = self.mox.CreateMock(OSCClient)
+	  client.sendto(message, ("to_address", 1234))
+	  self.mox.ReplayAll()
+
+	  send_message (StringIO(line), client)
+	  self.mox.VerifyAll()
+
 #+end_src
 
 #+RESULTS:
