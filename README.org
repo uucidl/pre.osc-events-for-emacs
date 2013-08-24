@@ -318,27 +318,38 @@ recipient
 
 #+name: deferred-osc-communication
 #+begin_src python
-  def accept_deferred_message(client, addr, tags, data, client_address):
-      """deferred messages are proxied through our server"""
+  def wrap_deferred(bundle, to_address):
+      new_bundle = OSCBundle(address='deferred', time=bundle.timetag)
+      for msg in bundle.values():
+	  new_bundle.append(['%s:%i' % to_address, msg.address, msg.values()])
 
-      # addr and client_address are ourselves
+      return new_bundle
 
-      # unpacking the message contained in this message
+  def unwrap_deferred(message):
+      data = message.values()
+
       to_address = data[0].split(':')
       to_address = to_address[0], int(to_address[1])
       message = OSCMessage(data[1])
       message.extend(data[2:])
+
+      return message, to_address
+
+  def accept_deferred_message(client, addr, tags, data, client_address):
+      """deferred messages are proxied through our server"""
+
+      # addr and client_address are ourselves
+      message = OSCMessage(addr)
+      message.extend(data)
+
+      message, to_address = unwrap_deferred(message)
 
       client.sendto(message, to_address)
 
   def send_deferred_message(client, server, bundle, to_address):
       """send a message with a timestamp in the future"""
 
-      new_bundle = OSCBundle(address='deferred', time=bundle.timetag)
-      for msg in bundle.values():
-	  new_bundle.append(['%s:%i' % to_address, msg.address, msg.values()])
-
-      client.sendto(new_bundle, server.address)
+      client.sendto(wrap_deferred(bundle, to_address), server.address)
 
   class TestDeferred(unittest.TestCase):
       def setUp(self):
@@ -347,18 +358,39 @@ recipient
       def tearDown(self):
 	  self.mox.UnsetStubs()
 
-      def test_send_deferred_message(self):
+      def test_roundtrip(self):
 	  now_sec = 123300.0
 	  bundle = OSCBundle(time=now_sec)
 	  message = OSCMessage('/hello')
 	  message.append(['1 2 3'])
 	  bundle.append(message)
 
+	  bundle = wrap_deferred(bundle, ('localhost', 1234))
+	  self.assertEquals(
+	      (message, ('localhost', 1234)),
+	      unwrap_deferred(bundle.values()[0])
+	  )
+
+
+      def test_send_deferred_message(self):
+	  now_sec = 123300.0
+	  bundle = OSCBundle(time=now_sec)
+	  message = OSCMessage('/hello')
+	  message.append(['1 2 3', 4, 5.0, 6])
+	  bundle.append(message)
+
 	  server = self.mox.CreateMock(OSCServer)
 	  server.address = ('localhost', 5678)
 
+	  def wraps_original_message(bundle):
+	      umessage, address = unwrap_deferred(bundle.values()[0])
+
+	      self.assertEquals(message, umessage)
+	      self.assertEquals(('localhost', 1234), address)
+	      return umessage == message
+
 	  client = self.mox.CreateMock(OSCClient)
-	  client.sendto(mox.IgnoreArg(), ('localhost', 5678))
+	  client.sendto(mox.Func(wraps_original_message), ('localhost', 5678))
 	  self.mox.ReplayAll()
 
 	  send_deferred_message(client, server, bundle, ('localhost', 1234))
