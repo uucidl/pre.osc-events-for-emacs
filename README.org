@@ -364,10 +364,22 @@ which will make Emacs' jobs much easier.
 	  self.mox.UnsetStubs()
 
       def test_send_message(self):
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))'
 	  message = OSCMessage("/my/address")
 	  message.append(1)
 	  message.append('one')
+
+	  self.mox.StubOutWithMock(messages, 'packet_osc')
+	  messages.packet_osc([
+	      sexpdata.Symbol('osc-packet'),
+	      'from_address',
+	      'to_address:1234',
+	      ["/my/address", 1, "one"],
+	  ]
+	  ).AndReturn(
+	      (message, ('to_address', 1234))
+	  )
+
+	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))'
 
 	  client = self.mox.CreateMock(OSCClient)
 	  client.sendto(message, ("to_address", 1234))
