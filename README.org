@@ -401,6 +401,8 @@ which will make Emacs' jobs much easier.
 
 #+RESULTS:
 
+*** Client (Emacs) communication
+
 Now, we can use this bridge program already to communicate with emacs using its process API:
 
 #+begin_src elisp :tangle osc.el
