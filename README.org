@@ -169,12 +169,19 @@ which will make Emacs' jobs much easier.
 	  to_address = lst[2].split(':')
 	  to_address = to_address[0], int(to_address[1])
 	  message = list_to_osc_message(lst[3])
-	  timestamp_sec = lst[4] if len(lst) > 4 else None
+	  timestamp = lst[4] if len(lst) > 4 else None
       except:
 	  etype, value, tb = sys.exc_info()
 	  raise Exception('unsupported message %s!:%s' % (
 	      lst, ''.join(traceback.format_exception(etype, value, tb))
 	  ))
+
+      if timestamp is None:
+	  timestamp_sec = None
+      elif isinstance(timestamp, float):
+	  timestamp_sec = timestamp
+      elif timestamp[0] == sexpdata.Symbol('relative'):
+	  timestamp_sec = time.time() + timestamp[1]
 
       if timestamp_sec is not None:
 	  bundle = OSCBundle(time=timestamp_sec)
@@ -296,6 +303,26 @@ which will make Emacs' jobs much easier.
 
 	  client = self.mox.CreateMock(OSCClient)
 	  client.sendto(bundle, ("to_address", 1234))
+	  self.mox.ReplayAll()
+
+	  send_message (StringIO(line), client)
+	  self.mox.VerifyAll()
+
+      def test_send_relative_timestamped_message(self):
+	  now_sec = 1377246142.54
+	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") (relative 2.0))'
+	  message = OSCMessage("/my/address")
+	  message.append(1)
+	  message.append('one')
+
+	  bundle = OSCBundle(time=now_sec + 2.0)
+	  bundle.extend([ message ])
+
+	  self.mox.StubOutWithMock(time, 'time')
+	  time.time().AndReturn(now_sec)
+	  client = self.mox.CreateMock(OSCClient)
+	  client.sendto(bundle, ("to_address", 1234))
+	  time.time().AndReturn(now_sec + 0.05)
 	  self.mox.ReplayAll()
 
 	  send_message (StringIO(line), client)
