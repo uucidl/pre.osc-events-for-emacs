@@ -388,6 +388,24 @@ which will make Emacs' jobs much easier.
 	  send_message (StringIO(line), client)
 	  self.mox.VerifyAll()
 
+      def test_send_deferred_message(self):
+	  now_sec = 100000.0
+	  message = OSCBundle("/my/address", time=now_sec + 2.0)
+	  message.append(1)
+
+	  self.mox.StubOutWithMock(messages, 'packet_osc')
+	  messages.packet_osc(mox.IgnoreArg()).AndReturn(
+	      (message, ('to_address', 1234))
+	  )
+
+	  line = '(osc-packet "dummy")'
+	  client = self.mox.CreateMock(OSCClient)
+	  client.sendto(message, ("to_address", 1234))
+	  self.mox.ReplayAll()
+
+	  send_message (StringIO(line), client)
+	  self.mox.VerifyAll()
+
 #+end_src
 
 #+RESULTS:
