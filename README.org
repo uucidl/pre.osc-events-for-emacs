@@ -50,17 +50,15 @@ python-environment package:
     (python-environment-run (list "pip" "install" "-r" "bridge/requirements.txt" "-r" "bridge/dev_requirements.txt")))
 #+end_src
 
-#+RESULTS:
-: emacs-osc-install-python-dependencies
-
-** Main program
-
-Note: in order to execute the following in babel mode, you may execute the following:
+Note: in order to execute the python code blocks in babel mode, you
+should execute the following:
 
 #+begin_src elisp
   (require 'python-environment)
   (setq-local org-babel-python-command (python-environment-bin "python"))
 #+end_src
+
+** Main program
 
 An emacs elisp package will talk to the python bridge:
 
@@ -90,125 +88,17 @@ cancel an animation?)
 We will define a python module converting osc messages into s-exp,
 which will make Emacs' jobs much easier.
 
-#+begin_src python :tangle "bridge/osc.py" :results output
-  # -*- coding: utf-8 -*-
-  import argparse
-  import logging
+Here is the test case showing usage and expected behaviour:
+
+#+begin_src python :tangle "bridge/selftest/test_osc.py" :results output
   import mox
-  import select
-  import sexpdata
+  import os.path
   import sys
-  import time
-  import traceback
   import unittest
 
-  from OSC import (
-    OSCBundle,
-    OSCClient,
-    OSCMessage,
-    OSCServer,
-    OSCTimeTag,
-  )
-  from threading import Thread
-  from StringIO import StringIO
-  from contextlib import closing
+  sys.path += [ os.path.dirname(__file__) ]
 
-  # for patching OSC's OSCTimeTag
-  import OSC
-  import math
-  import struct
-
-  OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
-
-  logger = logging.getLogger(__name__)
-
-  def osc_message_as_list(osc_message):
-      return [osc_message.address] + osc_message.values()
-
-  def list_to_osc_message(lst):
-      if not lst:
-	  raise Exception('not an osc message')
-      message = OSCMessage(lst[0])
-      message.extend(lst[1:])
-
-      return message
-
-  def osc_message_as_sexp(osc_message):
-      """converts an osc message into a s-expression"""
-
-      return sexpdata.dumps(osc_message_as_list(osc_message))
-
-  def sexp_to_osc_message(sexp):
-      data = sexpdata.loads(sexp)
-      return list_to_osc_message(data)
-
-  def packet_sexp(from_endpoint, to_endpoint, osc_message):
-      return sexpdata.dumps([
-	  OSC_PACKET_SYMBOL, from_endpoint, to_endpoint, osc_message_as_list(osc_message),
-      ])
-
-  def accept_message(stream, server, addr, tags, data, client_address):
-      logger.debug('received message %r', locals())
-
-      def format_address(address):
-	return '%s:%i' % address
-
-      message = OSCMessage(addr)
-      message.extend(data)
-
-      stream.write(
-	packet_sexp(format_address(client_address), format_address(server.address()), message) +
-	'\n'
-      )
-
-  def packet_osc(lst):
-      try:
-	  if not OSC_PACKET_SYMBOL == lst[0]:
-	    raise Exception('unsupported message %r!' % lst)
-
-	  to_address = lst[2].split(':')
-	  to_address = to_address[0], int(to_address[1])
-	  message = list_to_osc_message(lst[3])
-	  timestamp = lst[4] if len(lst) > 4 else None
-      except:
-	  etype, value, tb = sys.exc_info()
-	  raise Exception('unsupported message %s!:%s' % (
-	      lst, ''.join(traceback.format_exception(etype, value, tb))
-	  ))
-
-      if timestamp is None:
-	  timestamp_sec = None
-      elif isinstance(timestamp, float):
-	  timestamp_sec = timestamp
-      elif timestamp[0] == sexpdata.Symbol('relative'):
-	  timestamp_sec = time.time() + timestamp[1]
-
-      if timestamp_sec is not None:
-	  bundle = OSCBundle(time=timestamp_sec)
-	  bundle.extend([ message ])
-	  message = bundle
-
-      return message, (to_address)
-
-
-  def send_message(stream, client):
-      msg = stream.read()
-      lst = sexpdata.loads(msg)
-      if not lst:
-	raise Exception('unrecognized message %r!' % msg)
-
-      message, to_address = packet_osc(lst)
-      client.sendto(message, to_address)
-      logger.debug('sent message %r %r', message, to_address)
-
-  class ServerHandler(object):
-    def __init__(self, server, stream):
-      self.server = server
-      self.stream = stream
-      server.addMsgHandler('default', self.sexp_accept_message)
-
-    def sexp_accept_message(self, addr, tags, data, client_address):
-      accept_message(self.stream, self.server, addr, tags, data, client_address)
+  from osc import *
 
   class TestOSCBridge(unittest.TestCase):
       def setUp(self):
@@ -327,6 +217,132 @@ which will make Emacs' jobs much easier.
 
 	  send_message (StringIO(line), client)
 	  self.mox.VerifyAll()
+
+  if __name__ == "__main__":
+      unittest.main(verbosity=2)
+#+end_src
+
+Most of the implementation of osc.py relies on the sexpdata module to
+perform sexp parsing.
+
+#+begin_src python :tangle "bridge/osc.py" :results output
+  # -*- coding: utf-8 -*-
+  import argparse
+  import logging
+  import select
+  import sexpdata
+  import sys
+  import time
+  import traceback
+
+  from OSC import (
+    OSCBundle,
+    OSCClient,
+    OSCMessage,
+    OSCServer,
+    OSCTimeTag,
+  )
+  from threading import Thread
+  from StringIO import StringIO
+  from contextlib import closing
+
+  # for patching OSC's OSCTimeTag
+  import OSC
+  import math
+  import struct
+
+  OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
+
+  logger = logging.getLogger(__name__)
+
+  def osc_message_as_list(osc_message):
+      return [osc_message.address] + osc_message.values()
+
+  def list_to_osc_message(lst):
+      if not lst:
+	  raise Exception('not an osc message')
+      message = OSCMessage(lst[0])
+      message.extend(lst[1:])
+
+      return message
+
+  def osc_message_as_sexp(osc_message):
+      """converts an osc message into a s-expression"""
+
+      return sexpdata.dumps(osc_message_as_list(osc_message))
+
+  def sexp_to_osc_message(sexp):
+      data = sexpdata.loads(sexp)
+      return list_to_osc_message(data)
+
+  def packet_sexp(from_endpoint, to_endpoint, osc_message):
+      return sexpdata.dumps([
+	  OSC_PACKET_SYMBOL, from_endpoint, to_endpoint, osc_message_as_list(osc_message),
+      ])
+
+  def accept_message(stream, server, addr, tags, data, client_address):
+      logger.debug('received message %r', locals())
+
+      def format_address(address):
+	return '%s:%i' % address
+
+      message = OSCMessage(addr)
+      message.extend(data)
+
+      stream.write(
+	packet_sexp(format_address(client_address), format_address(server.address()), message) +
+	'\n'
+      )
+
+  def packet_osc(lst):
+      try:
+	  if not OSC_PACKET_SYMBOL == lst[0]:
+	    raise Exception('unsupported message %r!' % lst)
+
+	  to_address = lst[2].split(':')
+	  to_address = to_address[0], int(to_address[1])
+	  message = list_to_osc_message(lst[3])
+	  timestamp = lst[4] if len(lst) > 4 else None
+      except:
+	  etype, value, tb = sys.exc_info()
+	  raise Exception('unsupported message %s!:%s' % (
+	      lst, ''.join(traceback.format_exception(etype, value, tb))
+	  ))
+
+      if timestamp is None:
+	  timestamp_sec = None
+      elif isinstance(timestamp, float):
+	  timestamp_sec = timestamp
+      elif timestamp[0] == sexpdata.Symbol('relative'):
+	  timestamp_sec = time.time() + timestamp[1]
+
+      if timestamp_sec is not None:
+	  bundle = OSCBundle(time=timestamp_sec)
+	  bundle.extend([ message ])
+	  message = bundle
+
+      return message, (to_address)
+
+
+  def send_message(stream, client):
+      msg = stream.read()
+      lst = sexpdata.loads(msg)
+      if not lst:
+	raise Exception('unrecognized message %r!' % msg)
+
+      message, to_address = packet_osc(lst)
+      client.sendto(message, to_address)
+      logger.debug('sent message %r %r', message, to_address)
+
+  class ServerHandler(object):
+    def __init__(self, server, stream):
+      self.server = server
+      self.stream = stream
+      server.addMsgHandler('default', self.sexp_accept_message)
+
+    def sexp_accept_message(self, addr, tags, data, client_address):
+      accept_message(self.stream, self.server, addr, tags, data, client_address)
+
 
   if __name__ == "__main__":
       parser = argparse.ArgumentParser()
