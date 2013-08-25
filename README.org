@@ -543,6 +543,8 @@ Now, we can use this bridge program already to communicate with emacs using its 
 	  (if (> 0 delta)
 	       (scroll-down delta)
 	       (scroll-up (- delta)))))
+    (if (equal "/monome/grid/key" (car msg))
+	(osc-send-message *grid64*client* "/grid/led/set" (nth 1 msg) (nth 2 msg) (nth 3 msg)))
     (if (equal '("/monome/grid/key" 0 7 1) msg)
 	(magit-status default-directory))
     (if (equal '("/monome/grid/key" 0 6 1) msg)
