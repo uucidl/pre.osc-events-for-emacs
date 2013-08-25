@@ -573,12 +573,102 @@ And the main programs ties everything together:
 
 *** Client (Emacs) communication
 
-Now, we can use this bridge program already to communicate with emacs using its process API:
+Now, we can use this bridge program already to communicate with emacs
+using its process API:
 
-#+begin_src elisp :tangle osc.el
-  (require 'python-environment)
+#+begin_src elisp :tangle "osc.el"
+(require 'python-environment)
 
-  (defun osc-bridge-message-handler (msg)
+(defvar *osc-bridge-process*
+  nil
+  "proxy with OSC devices")
+
+(defvar *osc-bridge-callbacks*
+  nil
+  "list of callbacks served by the bridge")
+
+(defun osc-bridge-process-input-line (line)
+  (let ((data (read line)))
+    (nth 3 data)))
+
+(defun osc-bridge-message-handler (msg)
+  (mapc (lambda (cb) (apply cb (list msg))) *osc-bridge-callbacks* ))
+
+(defun osc-bridge-filter (proc string)
+  (when (buffer-live-p (process-buffer proc))
+    (let ((message-queue nil))
+      (with-current-buffer (process-buffer proc)
+	(let ((moving (= (point) (process-mark proc))))
+	  (save-excursion
+	    ;; Insert the text, advancing the process marker.
+	    (goto-char (process-mark proc))
+	    (insert string)
+	    (let ((content (buffer-substring (point-min) (point))))
+	      (let ((rev-lines (nreverse (split-string content "\n" nil))))
+		(let ((last-line (car rev-lines)))
+		  (setq message-queue
+			(mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
+		  (delete-region (point-min) (point))
+		  (insert last-line)))
+	      (set-marker (process-mark proc) (point))
+	      (if moving (goto-char (process-mark proc)))))))
+      (condition-case err
+	  (mapc #'osc-bridge-message-handler message-queue)
+	(error (princ (format "Error occured in message handler: %s" err)))))))
+
+(defun osc-start-bridge ()
+  (setq osc-bridge-process
+	(start-process "osc-bridge" "*osc-bridge*"
+		       (python-environment-bin "python") "bridge/main.py"))
+  (set-process-filter osc-bridge-process #'osc-bridge-filter))
+
+(defun osc-require-bridge ()
+  (unless *osc-bridge-process*
+    (setq *osc-bridge-process* (osc-start-bridge)))
+  *osc-bridge-process*)
+
+(defun osc-make-client (hostname port)
+  """pass hostname and port of device to talk to"""
+  (list (require-osc-bridge-process) hostname port))
+
+(defun osc-add-callback (callback)
+  """add your callback function (lambda (msg) ...)"""
+  (osc-remove-callback callback)
+  (setq *osc-bridge-callbacks* (append *osc-bridge-callbacks* (list callback))))
+
+(defun osc-remove-callback (callback)
+  """remove your callback function"""
+  (setq *osc-bridge-callbacks*
+	(delq nil (mapcar (lambda (x) (if (equal x callback) nil x)) *osc-bridge-callbacks*))))
+
+(defun osc-send-message (client message &optional timestamp)
+  """send an osc message to the client"""
+  (let ((process (car client))
+	(endpoint (car (cdr client))))
+    (if (and (not (listp message))
+	     (not (stringp (first message))))
+	(error (format "malformed message %s" message)))
+    (process-send-string
+     process
+     (format "%S\n" (if timestamp
+			`(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
+			`(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
+#+end_src
+
+Which can be used like so:
+
+#+begin_src elisp
+  ;; start the bridge process
+  (progn
+   (setq osc-bridge-process
+	 (start-process "osc-bridge" "*osc-bridge*"
+			(python-environment-bin "python") "bridge/main.py"))
+   (set-process-filter osc-bridge-process #'osc-bridge-filter)
+
+   (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
+   (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033")))
+
+  (defun monome-callback (msg)
     (message (format "%S" msg))
     (if (equal "/monome/enc/delta" (car msg))
 	(let ((delta (nth 2 msg)))
@@ -592,59 +682,7 @@ Now, we can use this bridge program already to communicate with emacs using its 
 	(magit-status default-directory))
     (if (equal '("/monome/grid/key" 0 6 1) msg)
 	(other-window 1)))
-
-  (defun osc-bridge-process-input-line (line)
-    (let ((data (read line)))
-      (nth 3 data)))
-
-  (defun osc-bridge-filter (proc string)
-    (when (buffer-live-p (process-buffer proc))
-      (let ((message-queue nil))
-	(with-current-buffer (process-buffer proc)
-	  (let ((moving (= (point) (process-mark proc))))
-	    (save-excursion
-	      ;; Insert the text, advancing the process marker.
-	      (goto-char (process-mark proc))
-	      (insert string)
-	      (let ((content (buffer-substring (point-min) (point))))
-		(let ((rev-lines (nreverse (split-string content "\n" nil))))
-		  (let ((last-line (car rev-lines)))
-		    (setq message-queue
-			  (mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
-		    (delete-region (point-min) (point))
-		    (insert last-line)))
-		(set-marker (process-mark proc) (point))
-		(if moving (goto-char (process-mark proc)))))))
-	(condition-case err
-	    (mapc #'osc-bridge-message-handler message-queue)
-	  (error (princ (format "Error occured in message handler: %s" err)))))))
-
-  (defun osc-timetag-in-seconds (time)
-    (let ((origin (encode-time 0 0 0 1 1 1900 t)))
-      (float-time (time-subtract time origin))))
-
-  (defun osc-send-message (client message &optional timestamp)
-    """send an osc message to the client"""
-    (let ((process (car client))
-	  (endpoint (car (cdr client))))
-      (if (and (not (listp message))
-	       (not (stringp (first message))))
-	  (error (format "malformed message %s" message)))
-      (process-send-string
-       process
-       (format "%S\n" (if timestamp
-			  `(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
-			  `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
-
-  ;; start the bridge process
-  (progn
-   (setq osc-bridge-process
-	 (start-process "osc-bridge" "*osc-bridge*"
-			(python-environment-bin "python") "bridge/main.py"))
-   (set-process-filter osc-bridge-process #'osc-bridge-filter)
-
-   (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
-   (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033")))
+  (osc-add-callback #'monome-callback)
 
   ;; ask the monome for information
   (osc-send-message *arc-client* '("/sys/info" "127.0.0.1" 7016))
