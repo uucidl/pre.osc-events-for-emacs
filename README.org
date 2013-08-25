@@ -714,8 +714,52 @@ button and turning it off. This requires passing a timetag to the OSC
     (osc-send-message *arc-client* '("/monome/ring/all" 0 0) (+ (float-time (current-time)) 2.0)))
 #+end_src
 
-The above does not work yet because there is a bug in the osc-bridge /
-elisp talking to each others when two messages are sent in one shot.
+And some functions to test sending a large number of messages:
+
+#+begin_src elisp
+;; test sending a whole bunch of leds
+(defun monome-row (row state)
+  (dolist (coords
+	   (list (list row 0)
+		 (list row 1)
+		 (list row 2)
+		 (list row 3)
+		 (list row 4)
+		 (list row 5)
+		 (list row 6)
+		 (list row 7)))
+    (osc-send-message
+     *grid64-client*
+     (append (append '("/monome/grid/led/set") coords) (list state)))))
+
+(defun monome-row-anim (row state)
+  (let ((delay 0.0))
+    (dolist (coords
+	     (list (list row 0)
+		   (list row 1)
+		   (list row 2)
+		   (list row 3)
+		   (list row 4)
+		   (list row 5)
+		   (list row 6)
+		   (list row 7)))
+      (osc-send-message
+       *grid64-client*
+       (append (append '("/monome/grid/led/set") coords) (list state))
+       (list 'relative delay))
+      (setq delay (+ delay 1.00)))))
+
+(monome-row 0 0)
+(monome-row 0 1)
+(monome-row-anim 0 1)
+(monome-row-anim 0 0)
+#+end_src
+
+This shows some odd behaviour when enqueuing deferred messages.. some
+messages seem lost occasionally and delivery comes often in pairs.
+
+Instead, those lost messages arrive to emacs rather than to the
+device.
 
 ** Using Mario Lang's OSC package
 
