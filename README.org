@@ -798,12 +798,6 @@ And some functions to test sending a large number of messages:
 (monome-row 0 0)
 #+end_src
 
-This shows some odd behaviour when enqueuing deferred messages.. some
-messages seem lost occasionally and delivery comes often in pairs.
-
-Instead, those lost messages arrive to emacs rather than to the
-device.
-
 ** Using Mario Lang's OSC package
 
 I considered using Mario Lang's OSC package:
