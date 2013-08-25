@@ -415,6 +415,7 @@ And the main programs ties everything together:
   import logging
   import mox
   import sexpdata
+  import socket
   import sys
   import unittest
 
@@ -444,13 +445,12 @@ And the main programs ties everything together:
       args = parser.parse_args()
 
       logging.basicConfig(level=logging.ERROR)
-      #unittest.main()
-      import sys
 
       server = OSCServer(('localhost', args.port))
       ServerHandler(server, sys.stdout)
       thread = Thread(target=lambda: server.serve_forever())
-      client = OSCClient(server=server)
+      client = OSCClient()
+      client._setSocket(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
 
       thread.start()
 
@@ -544,7 +544,8 @@ Now, we can use this bridge program already to communicate with emacs using its 
 	       (scroll-down delta)
 	       (scroll-up (- delta)))))
     (if (equal "/monome/grid/key" (car msg))
-	(osc-send-message *grid64*client* "/grid/led/set" (nth 1 msg) (nth 2 msg) (nth 3 msg)))
+	(osc-send-message *grid64-client*
+			  (append '("/monome/grid/led/set") (cdr msg))))
     (if (equal '("/monome/grid/key" 0 7 1) msg)
 	(magit-status default-directory))
     (if (equal '("/monome/grid/key" 0 6 1) msg)
@@ -603,6 +604,7 @@ Now, we can use this bridge program already to communicate with emacs using its 
 
   ;; ask the monome for information
   (osc-send-message *arc-client* '("/sys/info" "127.0.0.1" 7016))
+  (osc-send-message *grid64-client* '("/sys/info" "127.0.0.1" 7016))
 
   ;; take-focus
   (dolist (client (list *arc-client* *grid64-client*))
