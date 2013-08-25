@@ -658,22 +658,27 @@ Now, we can use this bridge program already to communicate with emacs using its 
 
   (process-send-string
    osc-bridge-process
-   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:12002" ("/serialosc/list" "127.0.0.1" 7016))))
+   (format "%S\n"
+	   '(osc-packet "127.0.0.1:7016" "127.0.0.1:12002"
+			("/serialosc/list" "127.0.0.1" 7016))))
 
   ;; additional monome
   (process-send-string
    osc-bridge-process
-   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/sys/info" "127.0.0.1" 7016))))
+   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775"
+			       ("/sys/info" "127.0.0.1" 7016))))
 
   (process-send-string
    osc-bridge-process
-   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/sys/port" 7016))))
+   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775"
+			       ("/sys/port" 7016))))
 
   ;; want tilt?
 
   (process-send-string
    osc-bridge-process
-   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775" ("/monome/tilt/set" 0 0))))
+   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775"
+			       ("/monome/tilt/set" 0 0))))
 #+end_src
 
 #+RESULTS:
@@ -706,7 +711,7 @@ button and turning it off. This requires passing a timetag to the OSC
     ;; tell an arc to illuminate its ring now
     (osc-send-message *arc-client* '("/monome/ring/all" 0 14) (+ (float-time (current-time)) 0.0))
     ;; turn it off three seconds later
-    (osc-send-message *arc-client* '("/monome/ring/all" 0 0) (+ (float-time (current-time)) 3.0)))
+    (osc-send-message *arc-client* '("/monome/ring/all" 0 0) (+ (float-time (current-time)) 2.0)))
 #+end_src
 
 The above does not work yet because there is a bug in the osc-bridge /
