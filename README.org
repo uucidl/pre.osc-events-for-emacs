@@ -421,7 +421,7 @@ recipient
 	  bundle.append(message)
 
 	  server = self.mox.CreateMock(OSCServer)
-	  server.address = ('localhost', 5678)
+	  server.address().AndReturn(('localhost', 5678))
 
 	  def wraps_original_message(bundle):
 	      umessage, address = unwrap_deferred(bundle.values()[0])
