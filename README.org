@@ -47,7 +47,10 @@ python-environment package:
 
   (defun emacs-osc-install-python-dependencies ()
     (interactive)
-    (python-environment-run (list "pip" "install" "-r" "bridge/requirements.txt" "-r" "bridge/dev_requirements.txt")))
+    (python-environment-run
+     '("pip" "install"
+       "-r" "bridge/requirements.txt"
+       "-r" "bridge/dev_requirements.txt")))
 #+end_src
 
 Note: in order to execute the python code blocks in babel mode, you
@@ -125,7 +128,9 @@ which will make Emacs' jobs much easier.
 
   def packet_sexp(from_endpoint, to_endpoint, osc_message):
       return sexpdata.dumps([
-	  OSC_PACKET_SYMBOL, from_endpoint, to_endpoint, osc_message_as_list(osc_message),
+	  OSC_PACKET_SYMBOL,
+	  from_endpoint, to_endpoint,
+	  osc_message_as_list(osc_message),
       ])
 
   def packet_osc(lst):
@@ -165,7 +170,10 @@ which will make Emacs' jobs much easier.
 	  self.mox.UnsetStubs()
 
       def assert_roundtrip(self, message):
-	  self.assertEquals(message, sexp_to_osc_message(osc_message_as_sexp(message)))
+	  self.assertEquals(
+	      message,
+	      sexp_to_osc_message(osc_message_as_sexp(message))
+	  )
 
       def test_wrong_sexp(self):
 	  self.assertRaises(Exception, sexp_to_osc_message, "nil")
@@ -181,21 +189,27 @@ which will make Emacs' jobs much easier.
 	  message.append(42)
 	  message.append(-100042)
 
-	  self.assertEquals('("/my/address" 42 -100042)', osc_message_as_sexp(message))
+	  self.assertEquals(
+	      '("/my/address" 42 -100042)', osc_message_as_sexp(message)
+	  )
 	  self.assert_roundtrip(message)
 
       def test_osc_message_as_sexp_string(self):
 	  message = OSCMessage("/my/address")
 	  message.append('a string')
 
-	  self.assertEquals('("/my/address" "a string")', osc_message_as_sexp(message))
+	  self.assertEquals(
+	      '("/my/address" "a string")', osc_message_as_sexp(message)
+	  )
 	  self.assert_roundtrip(message)
 
       def test_osc_message_with_odd_strings(self):
 	  message = OSCMessage("/my/address")
 	  message.append(u'a \"string\"')
 
-	  self.assertEquals('("/my/address" "a \\"string\\"")', osc_message_as_sexp(message))
+	  self.assertEquals(
+	      '("/my/address" "a \\"string\\"")', osc_message_as_sexp(message)
+	  )
 	  self.assert_roundtrip(message)
 
       def test_osc_message_as_sexp_many(self):
@@ -207,7 +221,9 @@ which will make Emacs' jobs much easier.
 	  message.append(3)
 	  message.append('three')
 
-	  self.assertEquals('("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message))
+	  self.assertEquals(
+	      '("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message)
+	  )
 	  self.assert_roundtrip(message)
 
       def test_message_envelope(self):
@@ -216,7 +232,9 @@ which will make Emacs' jobs much easier.
 	  message.append('one')
 
 	  received_sexp = packet_sexp('Alice:1', 'Bob:3', message)
-	  self.assertEquals('(osc-packet "Alice:1" "Bob:3" ("/my/address" 1 "one"))', received_sexp)
+	  self.assertEquals(
+	      '(osc-packet "Alice:1" "Bob:3" ("/my/address" 1 "one"))', received_sexp
+	  )
 
 	  parsed_osc_message, to_address = packet_osc(
 	      sexpdata.loads(received_sexp)
@@ -226,18 +244,26 @@ which will make Emacs' jobs much easier.
 
       def test_timestamped_message_envelope(self):
 	  now_sec = 1377246142.54
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)' % now_sec
+	  line = """
+	  (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)
+	  """ % now_sec
+
 	  message = OSCMessage("/my/address")
 	  message.append(1)
 	  message.append('one')
 
 	  bundle = OSCBundle(time=now_sec)
 	  bundle.extend([ message ])
-	  self.assertEquals((bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line)))
+	  self.assertEquals(
+	      (bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line))
+	  )
 
       def test_relative_timestamps_in_envelopes(self):
 	  now_sec = 1377246142.54
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") (relative 2.0))'
+	  line = """
+	  (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") (relative 2.0))
+	  """
+
 	  message = OSCMessage("/my/address")
 	  message.append(1)
 	  message.append('one')
@@ -278,8 +304,10 @@ prints to a text stream:
       message.extend(data)
 
       stream.write(
-	messages.packet_sexp(format_address(client_address), format_address(server.address()), message) +
-	'\n'
+	messages.packet_sexp(
+	    format_address(client_address),
+	    format_address(server.address()), message
+	) + '\n'
       )
 
   class ServerHandler(object):
@@ -291,10 +319,14 @@ prints to a text stream:
 	  server.addMsgHandler('deferred', self.accept_deferred_message)
 
       def accept_message(self, addr, tags, data, client_address):
-	  accept_message(self.stream, self.server, addr, tags, data, client_address)
+	  accept_message(
+	      self.stream, self.server, addr, tags, data, client_address
+	  )
 
       def accept_deferred_message(self, addr, tags, data, client_address):
-	  accept_deferred_message(self.server.client, addr, tags, data, client_address)
+	  accept_deferred_message(
+	      self.server.client, addr, tags, data, client_address
+	  )
 #+end_src
 
 The bridge accepts s-expression from its text stream and turn them
@@ -492,7 +524,9 @@ And the main programs ties everything together:
 	      (message, ('to_address', 1234))
 	  )
 
-	  line = '(osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))'
+	  line = """
+	  (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))
+	  """
 
 	  client = self.mox.CreateMock(OSCClient)
 	  client.sendto(message, ("to_address", 1234))
@@ -517,7 +551,9 @@ And the main programs ties everything together:
 
 	  client = self.mox.CreateMock(OSCClient)
 	  server = self.mox.CreateMock(OSCServer)
-	  self.mox.StubOutWithMock(sys.modules[__name__], 'send_deferred_message')
+	  self.mox.StubOutWithMock(
+	      sys.modules[__name__], 'send_deferred_message'
+	  )
 	  send_deferred_message(client, server, message, address)
 
 	  self.mox.ReplayAll()
