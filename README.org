@@ -626,19 +626,22 @@ using its process API:
 	(error (princ (format "Error occured in message handler: %s" err)))))))
 
 (defun osc-start-bridge ()
-  (setq osc-bridge-process
-	(start-process "osc-bridge" "*osc-bridge*"
-		       (python-environment-bin "python") "bridge/main.py"))
-  (set-process-filter osc-bridge-process #'osc-bridge-filter))
+  (let ((process (start-process "osc-bridge" "*osc-bridge*"
+				(python-environment-bin "python") "bridge/main.py")))
+    (set-process-filter process #'osc-bridge-filter)
+    process))
 
 (defun osc-require-bridge ()
-  (unless *osc-bridge-process*
+  (unless (and *osc-bridge-process* (process-live-p *osc-bridge-process*))
     (setq *osc-bridge-process* (osc-start-bridge)))
-  *osc-bridge-process*)
+  ,*osc-bridge-process*)
+
+(defun osc-server-address ()
+  '("localhost" 7016))
 
 (defun osc-make-client (hostname port)
   """pass hostname and port of device to talk to"""
-  (list (require-osc-bridge-process) hostname port))
+  (list (osc-require-bridge) hostname port))
 
 (defun osc-add-callback (callback)
   """add your callback function (lambda (msg) ...)"""
