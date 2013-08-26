@@ -96,7 +96,9 @@ which will make Emacs' jobs much easier.
 #+begin_src python :tangle "bridge/messages.py" :results output
   import mox
   import sexpdata
+  import sys
   import time
+  import traceback
   import unittest
 
   from OSC import (
