@@ -834,3 +834,16 @@ within Emacs. Macking my package compatible would be a good idea.
   (delete-process mm-arc-server)
 
 #+end_src
+
+** Packaging
+
+The python module can be packaged normally and installed when the
+elisp module is being installed.
+
+#+begin_src elisp :tangle "osc-protocol-pkg.el"
+  (define-package
+    "osc-protocol"
+    "0.1.0"
+    "an API to send and respond to OSC messages (OpenSoundControl)"
+    '((python-environment "20130624.1239")))
+#+end_src
