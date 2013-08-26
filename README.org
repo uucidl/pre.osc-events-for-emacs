@@ -686,46 +686,31 @@ Which can be used like so:
 	(magit-status default-directory))
     (if (equal '("/monome/grid/key" 0 6 1) msg)
 	(other-window 1)))
-  (osc-add-callback #'monome-callback)
+
+  (progn
+   (setq *grid64-client* (osc-make-client "127.0.0.1" 10775))
+   (setq *arc-client* (osc-make-client "127.0.0.1" 11033))
+   (setq *serialosc* (osc-make-client "127.0.0.1" 12002))
+   (osc-add-callback #'monome-callback)
+
+   ;; take-focus
+   (dolist (client (list *arc-client* *grid64-client*))
+     (osc-send-message client `("/sys/host" ,(car (osc-server-address))))
+     (osc-send-message client `("/sys/port" ,(cadr (osc-server-address))))))
 
   ;; ask the monome for information
   (osc-send-message *arc-client* '("/sys/info" "127.0.0.1" 7016))
   (osc-send-message *grid64-client* '("/sys/info" "127.0.0.1" 7016))
 
-  ;; take-focus
-  (dolist (client (list *arc-client* *grid64-client*))
-    (osc-send-message client '("/sys/host" "127.0.0.1"))
-    (osc-send-message client '("/sys/port" 7016)))
 
   ;; tell an arc to illuminate its ring
   (osc-send-message *arc-client* '("/monome/ring/all" 0 14))
   ;; turn it off
   (osc-send-message *arc-client* '("/monome/ring/all" 0 0))
 
-  (process-send-string
-   osc-bridge-process
-   (format "%S\n"
-	   '(osc-packet "127.0.0.1:7016" "127.0.0.1:12002"
-			("/serialosc/list" "127.0.0.1" 7016))))
-
-  ;; additional monome
-  (process-send-string
-   osc-bridge-process
-   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775"
-			       ("/sys/info" "127.0.0.1" 7016))))
-
-  (process-send-string
-   osc-bridge-process
-   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775"
-			       ("/sys/port" 7016))))
-
-  ;; want tilt?
-
-  (process-send-string
-   osc-bridge-process
-   (format "%S\n" '(osc-packet "127.0.0.1:7016" "127.0.0.1:10775"
-			       ("/monome/tilt/set" 0 0))))
-#+end_src
+  ;; serial-osc list
+  (osc-send-message *serialosc* `("/serialosc/list" ,@(osc-server-address)))
+  #+end_src
 
 #+RESULTS:
 
@@ -737,13 +722,10 @@ button and turning it off. This requires passing a timetag to the OSC
 #+begin_src elisp
   ;; start the bridge process
   (progn
-   (setq osc-bridge-process
-	 (start-process "osc-bridge" "*osc-bridge*"
-			(python-environment-bin "python") "bridge/main.py"))
-   (set-process-filter osc-bridge-process #'osc-bridge-filter)
-
-   (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
-   (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033")))
+   (setq *grid64-client* (osc-make-client "127.0.0.1" 10775))
+   (setq *arc-client* (osc-make-client "127.0.0.1" 11033))
+   (setq *serialosc* (osc-make-client "127.0.0.1" 12002))
+   (osc-add-callback #'monome-callback))
 
   ;; ask the monome for information
   (osc-send-message *arc-client* '("/sys/info" "127.0.0.1" 7016))
@@ -758,6 +740,8 @@ button and turning it off. This requires passing a timetag to the OSC
     (osc-send-message *arc-client* '("/monome/ring/all" 0 14) (+ (float-time (current-time)) 0.0))
     ;; turn it off three seconds later
     (osc-send-message *arc-client* '("/monome/ring/all" 0 0) (+ (float-time (current-time)) 2.0)))
+
+  (osc-send-message *grid64-client* '("/monome/grid/led/all" 1))
 #+end_src
 
 And some functions to test sending a large number of messages:
