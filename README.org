@@ -656,7 +656,7 @@ using its process API:
 (defun osc-send-message (client message &optional timestamp)
   """send an osc message to the client"""
   (let ((process (car client))
-	(endpoint (car (cdr client))))
+	(endpoint (apply #'format (append '("%s:%d") (cdr client)))))
     (if (and (not (listp message))
 	     (not (stringp (first message))))
 	(error (format "malformed message %s" message)))
@@ -664,22 +664,14 @@ using its process API:
      process
      (format "%S\n" (if timestamp
 			`(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
-			`(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
+		      `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
+
+;; osc-protocol.el ends here
 #+end_src
 
 Which can be used like so:
 
 #+begin_src elisp
-  ;; start the bridge process
-  (progn
-   (setq osc-bridge-process
-	 (start-process "osc-bridge" "*osc-bridge*"
-			(python-environment-bin "python") "bridge/main.py"))
-   (set-process-filter osc-bridge-process #'osc-bridge-filter)
-
-   (setq *grid64-client* `(,osc-bridge-process "127.0.0.1:10775"))
-   (setq *arc-client* `(,osc-bridge-process "127.0.0.1:11033")))
-
   (defun monome-callback (msg)
     (message (format "%S" msg))
     (if (equal "/monome/enc/delta" (car msg))
