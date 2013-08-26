@@ -578,7 +578,14 @@ And the main programs ties everything together:
 Now, we can use this bridge program already to communicate with emacs
 using its process API:
 
-#+begin_src elisp :tangle "osc.el"
+#+begin_src elisp :tangle "osc-protocol.el"
+;;; osc-protocol.el -- an API to send and receive OSC messages
+
+;; Copyright 2013 Nicolas Léveillé
+;; Author: Nicolas Léveillé <nicolas@uucidl.com>
+;; URL: https://github.com/uucidl/pre.osc-events-for-emacs
+;; Version: 0.1.0
+
 (require 'python-environment)
 
 (defvar *osc-bridge-process*
