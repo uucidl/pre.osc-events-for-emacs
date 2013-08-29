@@ -18,11 +18,8 @@ its own discovery protocol, fortunately based on OSC.
 First, let's create the requirements files:
 
 #+begin_src text :tangle "bridge/requirements.txt"
-pyosc>=0.3.6
+pyOSC>=0.3.6
 sexpdata
-#+end_src
-
-#+begin_src text :tangle "bridge/dev_requirements.txt"
 nose
 mox
 #+end_src
@@ -32,11 +29,7 @@ second one for development. You are encouraged to call these from
 within a virtual environment.
 
 #+begin_src sh :tangle "bridge/init.sh" :exports none
-pip install -r requirements.txt
-#+end_src
-
-#+begin_src sh :tangle "bridge/dev.sh" :exports none
-pip install -r requirements.txt -r dev_requirements.txt
+pip install -f ../third-party/python-packages/ -r requirements.txt -r dev_requirements.txt
 #+end_src
 
 You may also do it from within emacs, assuming you have installed the
@@ -49,6 +42,7 @@ python-environment package:
     (interactive)
     (python-environment-run
      '("pip" "install"
+       "--find-links" "./third-party/python-packages/"
        "-r" "bridge/requirements.txt"
        "-r" "bridge/dev_requirements.txt")))
 #+end_src
