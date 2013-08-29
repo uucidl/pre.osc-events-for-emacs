@@ -787,47 +787,8 @@ I considered using Mario Lang's OSC package:
 - I attempted to fix it using bindat, which does support signed integers?
 
 It however gives an idea of the type of OSC api that can function
-within Emacs. Macking my package compatible would be a good idea.
-
-#+begin_src elisp
-  (setq mm-arc-client (osc-make-client "localhost" 11033))
-
-  (defun mm-take-focus (client server)
-    (osc-send-message client "/sys/host" (process-contact server :host))
-    (osc-send-message client "/sys/port" (process-contact server :service)))
-
-  (defun mm-ask-info (client)
-    (osc-send-message client "/sys/info"))
-
-  (defun mm-make-arc-server (port)
-    (osc-make-server "localhost" port #'arc-server-callback))
-
-  (defun arc-server-callback (path &rest args)
-    (message "OSC %s: %S" path args))
-    (if (equal "/monome/enc/delta" path)
-	(let ((delta (nth 1 args)))
-	  (if (< 0 delta)
-	      (scroll-up (- delta))
-	    (scroll-down delta)))))
-
-  (delete-process mm-arc-server)
-  (setq mm-arc-server (mm-make-arc-server 7016))
-  (set-process-buffer mm-arc-server (get-buffer-create "*OSC* mm-arc-server"))
-
-  (defun mm-switch-frame (event)
-    (interactive "e")
-    (handle-switch-frame event)
-    (message "taking focus from monome %s" event)
-    (mm-take-focus mm-arc-client mm-arc-server))
-
-  (define-key (current-global-map) [(switch-frame)] #'mm-switch-frame)
-
-  (mm-take-focus mm-arc-client mm-arc-server)
-  (mm-ask-info mm-arc-client)
-
-  (delete-process mm-arc-server)
-
-#+end_src
+within Emacs. The API of this package will attempt to keep the same
+spirit wherever possible.
 
 ** Packaging
 
