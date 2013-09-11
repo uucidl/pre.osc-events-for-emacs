@@ -93,192 +93,199 @@ We will define a python module converting osc messages into s-exp,
 which will make Emacs' jobs much easier.
 
 #+begin_src python :tangle "bridge/messages.py" :results output
-  import mox
-  import sexpdata
+  import os
   import sys
   import time
   import traceback
   import unittest
-
+  
+  if __name__ == "__main__":
+      sys.path += [ os.path.join(
+          os.path.dirname(__file__), '..', 'third-party', 'python-packages'
+      )]
+  
+  import mox
+  import sexpdata
+  
   from OSC import (
     OSCBundle,
     OSCMessage,
   )
-
+  
   OSC_PACKET_SYMBOL = sexpdata.Symbol('osc-packet')
-
+  
   def osc_message_as_list(osc_message):
       return [osc_message.address] + osc_message.values()
-
+  
   def list_to_osc_message(lst):
       if not lst:
-	  raise Exception('not an osc message')
+          raise Exception('not an osc message')
       message = OSCMessage(lst[0])
       message.extend(lst[1:])
-
+  
       return message
-
+  
   def osc_message_as_sexp(osc_message):
       """converts an osc message into a s-expression"""
-
+  
       return sexpdata.dumps(osc_message_as_list(osc_message))
-
+  
   def sexp_to_osc_message(sexp):
       data = sexpdata.loads(sexp)
       return list_to_osc_message(data)
-
+  
   def packet_sexp(from_endpoint, to_endpoint, osc_message):
       return sexpdata.dumps([
-	  OSC_PACKET_SYMBOL,
-	  from_endpoint, to_endpoint,
-	  osc_message_as_list(osc_message),
+          OSC_PACKET_SYMBOL,
+          from_endpoint, to_endpoint,
+          osc_message_as_list(osc_message),
       ])
-
+  
   def packet_osc(lst):
       try:
-	  if not OSC_PACKET_SYMBOL == lst[0]:
-	    raise Exception('unsupported message %r!' % lst)
-
-	  to_address = lst[2].split(':')
-	  to_address = to_address[0], int(to_address[1])
-	  message = list_to_osc_message(lst[3])
-	  timestamp = lst[4] if len(lst) > 4 else None
+          if not OSC_PACKET_SYMBOL == lst[0]:
+            raise Exception('unsupported message %r!' % lst)
+  
+          to_address = lst[2].split(':')
+          to_address = to_address[0], int(to_address[1])
+          message = list_to_osc_message(lst[3])
+          timestamp = lst[4] if len(lst) > 4 else None
       except:
-	  etype, value, tb = sys.exc_info()
-	  raise Exception('unsupported message %s!:%s' % (
-	      lst, ''.join(traceback.format_exception(etype, value, tb))
-	  ))
-
+          etype, value, tb = sys.exc_info()
+          raise Exception('unsupported message %s!:%s' % (
+              lst, ''.join(traceback.format_exception(etype, value, tb))
+          ))
+  
       if timestamp is None:
-	  timestamp_sec = None
+          timestamp_sec = None
       elif isinstance(timestamp, float):
-	  timestamp_sec = timestamp
+          timestamp_sec = timestamp
       elif timestamp[0] == sexpdata.Symbol('relative'):
-	  timestamp_sec = time.time() + timestamp[1]
-
+          timestamp_sec = time.time() + timestamp[1]
+  
       if timestamp_sec is not None:
-	  bundle = OSCBundle(time=timestamp_sec)
-	  bundle.extend([ message ])
-	  message = bundle
-
+          bundle = OSCBundle(time=timestamp_sec)
+          bundle.extend([ message ])
+          message = bundle
+  
       return message, (to_address)
-
+  
   class TestMessages(unittest.TestCase):
       def setUp(self):
-	  self.mox = mox.Mox()
-
+          self.mox = mox.Mox()
+  
       def tearDown(self):
-	  self.mox.UnsetStubs()
-
+          self.mox.UnsetStubs()
+  
       def assert_roundtrip(self, message):
-	  self.assertEquals(
-	      message,
-	      sexp_to_osc_message(osc_message_as_sexp(message))
-	  )
-
+          self.assertEquals(
+              message,
+              sexp_to_osc_message(osc_message_as_sexp(message))
+          )
+  
       def test_wrong_sexp(self):
-	  self.assertRaises(Exception, sexp_to_osc_message, "nil")
-	  self.assertRaises(Exception, sexp_to_osc_message, "()")
-
+          self.assertRaises(Exception, sexp_to_osc_message, "nil")
+          self.assertRaises(Exception, sexp_to_osc_message, "()")
+  
       def test_osc_message_as_sexp_trigger(self):
-	  message = OSCMessage("/my/address")
-	  self.assertEquals('("/my/address")', osc_message_as_sexp(message))
-	  self.assert_roundtrip(message)
-
+          message = OSCMessage("/my/address")
+          self.assertEquals('("/my/address")', osc_message_as_sexp(message))
+          self.assert_roundtrip(message)
+  
       def test_osc_message_as_sexp_integer(self):
-	  message = OSCMessage("/my/address")
-	  message.append(42)
-	  message.append(-100042)
-
-	  self.assertEquals(
-	      '("/my/address" 42 -100042)', osc_message_as_sexp(message)
-	  )
-	  self.assert_roundtrip(message)
-
+          message = OSCMessage("/my/address")
+          message.append(42)
+          message.append(-100042)
+  
+          self.assertEquals(
+              '("/my/address" 42 -100042)', osc_message_as_sexp(message)
+          )
+          self.assert_roundtrip(message)
+  
       def test_osc_message_as_sexp_string(self):
-	  message = OSCMessage("/my/address")
-	  message.append('a string')
-
-	  self.assertEquals(
-	      '("/my/address" "a string")', osc_message_as_sexp(message)
-	  )
-	  self.assert_roundtrip(message)
-
+          message = OSCMessage("/my/address")
+          message.append('a string')
+  
+          self.assertEquals(
+              '("/my/address" "a string")', osc_message_as_sexp(message)
+          )
+          self.assert_roundtrip(message)
+  
       def test_osc_message_with_odd_strings(self):
-	  message = OSCMessage("/my/address")
-	  message.append(u'a \"string\"')
-
-	  self.assertEquals(
-	      '("/my/address" "a \\"string\\"")', osc_message_as_sexp(message)
-	  )
-	  self.assert_roundtrip(message)
-
+          message = OSCMessage("/my/address")
+          message.append(u'a \"string\"')
+  
+          self.assertEquals(
+              '("/my/address" "a \\"string\\"")', osc_message_as_sexp(message)
+          )
+          self.assert_roundtrip(message)
+  
       def test_osc_message_as_sexp_many(self):
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-	  message.append(2)
-	  message.append('two')
-	  message.append(3)
-	  message.append('three')
-
-	  self.assertEquals(
-	      '("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message)
-	  )
-	  self.assert_roundtrip(message)
-
+          message = OSCMessage("/my/address")
+          message.append(1)
+          message.append('one')
+          message.append(2)
+          message.append('two')
+          message.append(3)
+          message.append('three')
+  
+          self.assertEquals(
+              '("/my/address" 1 "one" 2 "two" 3 "three")', osc_message_as_sexp(message)
+          )
+          self.assert_roundtrip(message)
+  
       def test_message_envelope(self):
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  received_sexp = packet_sexp('Alice:1', 'Bob:3', message)
-	  self.assertEquals(
-	      '(osc-packet "Alice:1" "Bob:3" ("/my/address" 1 "one"))', received_sexp
-	  )
-
-	  parsed_osc_message, to_address = packet_osc(
-	      sexpdata.loads(received_sexp)
-	  )
-	  self.assertEquals(("Bob", 3), to_address)
-	  self.assertEquals(message, parsed_osc_message)
-
+          message = OSCMessage("/my/address")
+          message.append(1)
+          message.append('one')
+  
+          received_sexp = packet_sexp('Alice:1', 'Bob:3', message)
+          self.assertEquals(
+              '(osc-packet "Alice:1" "Bob:3" ("/my/address" 1 "one"))', received_sexp
+          )
+  
+          parsed_osc_message, to_address = packet_osc(
+              sexpdata.loads(received_sexp)
+          )
+          self.assertEquals(("Bob", 3), to_address)
+          self.assertEquals(message, parsed_osc_message)
+  
       def test_timestamped_message_envelope(self):
-	  now_sec = 1377246142.54
-	  line = """
-	  (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)
-	  """ % now_sec
-
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  bundle = OSCBundle(time=now_sec)
-	  bundle.extend([ message ])
-	  self.assertEquals(
-	      (bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line))
-	  )
-
+          now_sec = 1377246142.54
+          line = """
+          (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") %s)
+          """ % now_sec
+  
+          message = OSCMessage("/my/address")
+          message.append(1)
+          message.append('one')
+  
+          bundle = OSCBundle(time=now_sec)
+          bundle.extend([ message ])
+          self.assertEquals(
+              (bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line))
+          )
+  
       def test_relative_timestamps_in_envelopes(self):
-	  now_sec = 1377246142.54
-	  line = """
-	  (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") (relative 2.0))
-	  """
-
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  bundle = OSCBundle(time=now_sec + 2.0)
-	  bundle.extend([ message ])
-
-	  self.mox.StubOutWithMock(time, 'time')
-	  time.time().AndReturn(now_sec)
-	  self.mox.ReplayAll()
-
-	  self.assertEquals((bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line)))
-	  self.mox.VerifyAll()
-
+          now_sec = 1377246142.54
+          line = """
+          (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one") (relative 2.0))
+          """
+  
+          message = OSCMessage("/my/address")
+          message.append(1)
+          message.append('one')
+  
+          bundle = OSCBundle(time=now_sec + 2.0)
+          bundle.extend([ message ])
+  
+          self.mox.StubOutWithMock(time, 'time')
+          time.time().AndReturn(now_sec)
+          self.mox.ReplayAll()
+  
+          self.assertEquals((bundle, ('to_address', 1234)), packet_osc(sexpdata.loads(line)))
+          self.mox.VerifyAll()
+  
   if __name__ == "__main__":
       unittest.main(verbosity=2)
 #+end_src
@@ -450,12 +457,19 @@ And the main programs ties everything together:
 #+begin_src python :tangle "bridge/main.py" :results output :noweb yes
   import argparse
   import logging
-  import mox
-  import sexpdata
+  import os
   import socket
   import sys
   import unittest
-
+  
+  if __name__ == "__main__":
+      sys.path += [ os.path.join(
+          os.path.dirname(__file__), '..', 'third-party', 'python-packages'
+      )]
+  
+  import sexpdata
+  import mox
+  
   from OSC import (
     OSCBundle,
     OSCClient,
@@ -465,109 +479,109 @@ And the main programs ties everything together:
   from threading import Thread
   from StringIO import StringIO
   from contextlib import closing
-
+  
   import messages
-
+  
   logger = logging.getLogger(__name__)
-
+  
   <<inbound-osc-communication>>
-
+  
   <<outbound-osc-communication>>
-
+  
   <<deferred-osc-communication>>
-
+  
   if __name__ == "__main__":
       parser = argparse.ArgumentParser()
       parser.add_argument('--port', type=int, default=7016)
       parser.add_argument('--log-level', default=logging.ERROR)
       args = parser.parse_args()
-
+  
       logging.basicConfig(level=args.log_level)
-
+  
       server = OSCServer(('localhost', args.port))
       client = OSCClient()
       client._setSocket(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
-
+  
       ServerHandler(server, client, sys.stdout)
       thread = Thread(target=lambda: server.serve_forever())
-
+  
       thread.start()
-
+  
       with closing(server):
-	  while True:
-	      try:
-		  line = sys.stdin.readline()
-	      except KeyboardInterrupt:
-		  break
-
-	      if not line:
-		  break
-
-	      logger.debug("got stdin input: %r", line)
-	      send_message(StringIO(line), client, server)
-
+          while True:
+              try:
+                  line = sys.stdin.readline()
+              except KeyboardInterrupt:
+                  break
+  
+              if not line:
+                  break
+  
+              logger.debug("got stdin input: %r", line)
+              send_message(StringIO(line), client, server)
+  
       thread.join()
-
+  
   class TestMain(unittest.TestCase):
       def setUp(self):
-	  self.mox = mox.Mox()
-
+          self.mox = mox.Mox()
+  
       def tearDown(self):
-	  self.mox.UnsetStubs()
-
+          self.mox.UnsetStubs()
+  
       def test_send_message(self):
-	  message = OSCMessage("/my/address")
-	  message.append(1)
-	  message.append('one')
-
-	  self.mox.StubOutWithMock(messages, 'packet_osc')
-	  messages.packet_osc([
-	      sexpdata.Symbol('osc-packet'),
-	      'from_address',
-	      'to_address:1234',
-	      ["/my/address", 1, "one"],
-	  ]
-	  ).AndReturn(
-	      (message, ('to_address', 1234))
-	  )
-
-	  line = """
-	  (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))
-	  """
-
-	  client = self.mox.CreateMock(OSCClient)
-	  client.sendto(message, ("to_address", 1234))
-	  server = self.mox.CreateMock(OSCServer)
-	  self.mox.ReplayAll()
-
-	  send_message (StringIO(line), client, server)
-	  self.mox.VerifyAll()
-
+          message = OSCMessage("/my/address")
+          message.append(1)
+          message.append('one')
+  
+          self.mox.StubOutWithMock(messages, 'packet_osc')
+          messages.packet_osc([
+              sexpdata.Symbol('osc-packet'),
+              'from_address',
+              'to_address:1234',
+              ["/my/address", 1, "one"],
+          ]
+          ).AndReturn(
+              (message, ('to_address', 1234))
+          )
+  
+          line = """
+          (osc-packet "from_address" "to_address:1234" ("/my/address" 1 "one"))
+          """
+  
+          client = self.mox.CreateMock(OSCClient)
+          client.sendto(message, ("to_address", 1234))
+          server = self.mox.CreateMock(OSCServer)
+          self.mox.ReplayAll()
+  
+          send_message (StringIO(line), client, server)
+          self.mox.VerifyAll()
+  
       def test_send_deferred_message(self):
-	  now_sec = 100000.0
-	  message = OSCBundle("/my/address", time=now_sec + 2.0)
-	  message.append(1)
-	  address = ('to_address', 1234)
-
-	  self.mox.StubOutWithMock(messages, 'packet_osc')
-	  messages.packet_osc(mox.IgnoreArg()).AndReturn(
-	      (message, address)
-	  )
-
-	  line = '(osc-packet "dummy")'
-
-	  client = self.mox.CreateMock(OSCClient)
-	  server = self.mox.CreateMock(OSCServer)
-	  self.mox.StubOutWithMock(
-	      sys.modules[__name__], 'send_deferred_message'
-	  )
-	  send_deferred_message(client, server, message, address)
-
-	  self.mox.ReplayAll()
-
-	  send_message (StringIO(line), client, server)
-	  self.mox.VerifyAll()
-
+          now_sec = 100000.0
+          message = OSCBundle("/my/address", time=now_sec + 2.0)
+          message.append(1)
+          address = ('to_address', 1234)
+  
+          self.mox.StubOutWithMock(messages, 'packet_osc')
+          messages.packet_osc(mox.IgnoreArg()).AndReturn(
+              (message, address)
+          )
+  
+          line = '(osc-packet "dummy")'
+  
+          client = self.mox.CreateMock(OSCClient)
+          server = self.mox.CreateMock(OSCServer)
+          self.mox.StubOutWithMock(
+              sys.modules[__name__], 'send_deferred_message'
+          )
+          send_deferred_message(client, server, message, address)
+  
+          self.mox.ReplayAll()
+  
+          send_message (StringIO(line), client, server)
+          self.mox.VerifyAll()
+  
 #+end_src
 
 #+RESULTS:
@@ -578,94 +592,106 @@ Now, we can use this bridge program already to communicate with emacs
 using its process API:
 
 #+begin_src elisp :tangle "osc-protocol.el"
-;;; osc-protocol.el -- an API to send and receive OSC messages
+  ;;; osc-protocol.el -- an API to send and receive OSC messages
+  
+  ;; Copyright 2013 Nicolas Léveillé
+  ;; Author: Nicolas Léveillé <nicolas@uucidl.com>
+  ;; URL: https://github.com/uucidl/pre.osc-events-for-emacs
+  ;; Version: 0.1.0
+  
+  (defvar *osc-bridge-process*
+    nil
+    "proxy with OSC devices")
+  
+  (defvar *osc-bridge-callbacks*
+    nil
+    "list of callbacks served by the bridge")
+  
+  (defcustom osc-bridge-python-bin
+    nil
+    "alternative path for the python binary")
+  
+  (defun osc-bridge--python ()
+    (or osc-bridge-python-bin (executable-find "python")))
+  
+  (defun osc-bridge-process-input-line (line)
+    (let ((data (read line)))
+      (nth 3 data)))
+  
+  (defun osc-bridge-message-handler (msg)
+    (mapc (lambda (cb) (apply cb (list msg))) *osc-bridge-callbacks* ))
+  
+  (defun osc-bridge-filter (proc string)
+    (when (buffer-live-p (process-buffer proc))
+      (let ((message-queue nil))
+        (with-current-buffer (process-buffer proc)
+          (let ((moving (= (point) (process-mark proc))))
+            (save-excursion
+              ;; Insert the text, advancing the process marker.
+              (goto-char (process-mark proc))
+              (insert string)
+              (let ((content (buffer-substring (point-min) (point))))
+                (let ((rev-lines (nreverse (split-string content "\n" nil))))
+                  (let ((last-line (car rev-lines)))
+                    (setq message-queue
+                          (mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
+                    (delete-region (point-min) (point))
+                    (insert last-line)))
+                (set-marker (process-mark proc) (point))
+                (if moving (goto-char (process-mark proc)))))))
+        (condition-case err
+            (mapc #'osc-bridge-message-handler message-queue)
+          (error (princ (format "Error occured in message handler: %s" err)))))))
+  
+  (defun osc-start-bridge ()
+    (let ((process (start-process "osc-bridge" "*osc-bridge*"
+                                  (osc-bridge--python) "bridge/main.py")))
+      (set-process-filter process #'osc-bridge-filter)
+      process))
+  
+  (defun osc-require-bridge ()
+    (unless (and *osc-bridge-process* (process-live-p *osc-bridge-process*))
+      (setq *osc-bridge-process* (osc-start-bridge)))
+    ,*osc-bridge-process*)
+  
+  (defun osc-server-address ()
+    '("localhost" 7016))
+  
+  (defun osc-make-client (hostname port)
+    """pass hostname and port of device to talk to"""
+    (list (osc-require-bridge) hostname port))
+  
+  (defun osc-add-callback (callback)
+    """add your callback function (lambda (msg) ...)"""
+    (osc-remove-callback callback)
+    (setq *osc-bridge-callbacks* (append *osc-bridge-callbacks* (list callback))))
+  
+  (defun osc-remove-callback (callback)
+    """remove your callback function"""
+    (setq *osc-bridge-callbacks*
+          (delq nil (mapcar (lambda (x) (if (equal x callback) nil x)) *osc-bridge-callbacks*))))
+  
+  (defun osc-send-message (client message &optional timestamp)
+    """send an osc message to the client"""
+    (let ((process (car client))
+          (endpoint (apply #'format (append '("%s:%d") (cdr client)))))
+      (if (and (not (listp message))
+               (not (stringp (first message))))
+          (error (format "malformed message %s" message)))
+      (process-send-string
+       process
+       (format "%S\n" (if timestamp
+                          `(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
+                        `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
+  
+  ;; osc-protocol.el ends here
+#+end_src
 
-;; Copyright 2013 Nicolas Léveillé
-;; Author: Nicolas Léveillé <nicolas@uucidl.com>
-;; URL: https://github.com/uucidl/pre.osc-events-for-emacs
-;; Version: 0.1.0
+To run it within an environment instead (should not be needed)
 
+#+begin_src elisp
 (require 'python-environment)
-
-(defvar *osc-bridge-process*
-  nil
-  "proxy with OSC devices")
-
-(defvar *osc-bridge-callbacks*
-  nil
-  "list of callbacks served by the bridge")
-
-(defun osc-bridge-process-input-line (line)
-  (let ((data (read line)))
-    (nth 3 data)))
-
-(defun osc-bridge-message-handler (msg)
-  (mapc (lambda (cb) (apply cb (list msg))) *osc-bridge-callbacks* ))
-
-(defun osc-bridge-filter (proc string)
-  (when (buffer-live-p (process-buffer proc))
-    (let ((message-queue nil))
-      (with-current-buffer (process-buffer proc)
-	(let ((moving (= (point) (process-mark proc))))
-	  (save-excursion
-	    ;; Insert the text, advancing the process marker.
-	    (goto-char (process-mark proc))
-	    (insert string)
-	    (let ((content (buffer-substring (point-min) (point))))
-	      (let ((rev-lines (nreverse (split-string content "\n" nil))))
-		(let ((last-line (car rev-lines)))
-		  (setq message-queue
-			(mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
-		  (delete-region (point-min) (point))
-		  (insert last-line)))
-	      (set-marker (process-mark proc) (point))
-	      (if moving (goto-char (process-mark proc)))))))
-      (condition-case err
-	  (mapc #'osc-bridge-message-handler message-queue)
-	(error (princ (format "Error occured in message handler: %s" err)))))))
-
-(defun osc-start-bridge ()
-  (let ((process (start-process "osc-bridge" "*osc-bridge*"
-				(python-environment-bin "python") "bridge/main.py")))
-    (set-process-filter process #'osc-bridge-filter)
-    process))
-
-(defun osc-require-bridge ()
-  (unless (and *osc-bridge-process* (process-live-p *osc-bridge-process*))
-    (setq *osc-bridge-process* (osc-start-bridge)))
-  ,*osc-bridge-process*)
-
-(defun osc-server-address ()
-  '("localhost" 7016))
-
-(defun osc-make-client (hostname port)
-  """pass hostname and port of device to talk to"""
-  (list (osc-require-bridge) hostname port))
-
-(defun osc-add-callback (callback)
-  """add your callback function (lambda (msg) ...)"""
-  (osc-remove-callback callback)
-  (setq *osc-bridge-callbacks* (append *osc-bridge-callbacks* (list callback))))
-
-(defun osc-remove-callback (callback)
-  """remove your callback function"""
-  (setq *osc-bridge-callbacks*
-	(delq nil (mapcar (lambda (x) (if (equal x callback) nil x)) *osc-bridge-callbacks*))))
-
-(defun osc-send-message (client message &optional timestamp)
-  """send an osc message to the client"""
-  (let ((process (car client))
-	(endpoint (apply #'format (append '("%s:%d") (cdr client)))))
-    (if (and (not (listp message))
-	     (not (stringp (first message))))
-	(error (format "malformed message %s" message)))
-    (process-send-string
-     process
-     (format "%S\n" (if timestamp
-			`(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
-		      `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
-
-;; osc-protocol.el ends here
+(setq osc-bridge-python-bin (python-environment-bin "python"))
 #+end_src
 
 Which can be used like so:
