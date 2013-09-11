@@ -1,3 +1,5 @@
 
 pyOSC>=0.3.6
 sexpdata
+nose
+mox
