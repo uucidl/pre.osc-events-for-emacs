@@ -34,7 +34,7 @@ mox
 And the script init.sh for development inside a virtualenv.
 
 #+begin_src sh :tangle "bridge/init.sh" :exports none
-pip install -f ../third-party/python-packages/ -r requirements.txt
+pip install -f ../third-party/python-packages-archive/ -r requirements.txt
 #+end_src
 
 You may also do it from within emacs, assuming you have installed the
@@ -47,7 +47,7 @@ python-environment package:
     (interactive)
     (python-environment-run
      '("pip" "install"
-       "--find-links" "./third-party/python-packages/"
+       "--find-links" "./third-party/python-packages-archive/"
        "-r" "bridge/requirements.txt"
        "-r" "bridge/dev_requirements.txt")))
 #+end_src
