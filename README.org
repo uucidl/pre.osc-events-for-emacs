@@ -588,104 +588,104 @@ Now, we can use this bridge program already to communicate with emacs
 using its process API:
 
 #+begin_src elisp :tangle "osc-protocol.el"
-  ;;; osc-protocol.el -- an API to send and receive OSC messages
-  
-  ;; Copyright 2013 Nicolas Léveillé
-  ;; Author: Nicolas Léveillé <nicolas@uucidl.com>
-  ;; URL: https://github.com/uucidl/pre.osc-events-for-emacs
-  ;; Version: 0.1.0
-  
-  (defvar *osc-bridge-process*
-    nil
-    "proxy with OSC devices")
-  
-  (defvar *osc-bridge-callbacks*
-    nil
-    "list of callbacks served by the bridge")
-  
-  (defcustom osc-bridge-python-bin
-    nil
-    "alternative path for the python binary")
-  
-  (defun osc-bridge--python ()
-    (or osc-bridge-python-bin (executable-find "python")))
-  
-  (defun osc-bridge-process-input-line (line)
-    (let ((data (read line)))
-      (nth 3 data)))
-  
-  (defun osc-bridge-message-handler (msg)
-    (mapc (lambda (cb) (apply cb (list msg))) *osc-bridge-callbacks* ))
-  
-  (defun osc-bridge-filter (proc string)
-    (when (buffer-live-p (process-buffer proc))
-      (let ((message-queue nil))
-        (with-current-buffer (process-buffer proc)
-          (let ((moving (= (point) (process-mark proc))))
-            (save-excursion
-              ;; Insert the text, advancing the process marker.
-              (goto-char (process-mark proc))
-              (insert string)
-              (let ((content (buffer-substring (point-min) (point))))
-                (let ((rev-lines (nreverse (split-string content "\n" nil))))
-                  (let ((last-line (car rev-lines)))
-                    (setq message-queue
-                          (mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
-                    (delete-region (point-min) (point))
-                    (insert last-line)))
-                (set-marker (process-mark proc) (point))
-                (if moving (goto-char (process-mark proc)))))))
-        (condition-case err
-            (mapc #'osc-bridge-message-handler message-queue)
-          (error (princ (format "Error occured in message handler: %s" err)))))))
-  
-  (defun osc--expand-path (relative-path)
-    (expand-file-name relative-path (file-name-directory (or load-file-name buffer-file-name default-directory))))
+;;; osc-protocol.el -- an API to send and receive OSC messages
 
-  (defun osc--start-unbuffered-python-process (name buffer script)
-    (start-process name buffer (osc-bridge--python) "-u" (osc--expand-path script)))
+;; Copyright 2013 Nicolas Léveillé
+;; Author: Nicolas Léveillé <nicolas@uucidl.com>
+;; URL: https://github.com/uucidl/pre.osc-events-for-emacs
+;; Version: 0.1.0
 
-  (defun osc-start-bridge ()
-    (let ((process (osc--start-unbuffered-python-process "osc-bridge" "*osc-bridge*" "bridge/main.py")))
-      (set-process-filter process #'osc-bridge-filter)
-      process))
+(defvar *osc-bridge-process*
+  nil
+  "proxy with OSC devices")
 
-  (defun osc-require-bridge ()
-    (unless (and *osc-bridge-process* (process-live-p *osc-bridge-process*))
-      (setq *osc-bridge-process* (osc-start-bridge)))
-    ,*osc-bridge-process*)
-  
-  (defun osc-server-address ()
-    '("localhost" 7016))
-  
-  (defun osc-make-client (hostname port)
-    """pass hostname and port of device to talk to"""
-    (list (osc-require-bridge) hostname port))
-  
-  (defun osc-add-callback (callback)
-    """add your callback function (lambda (msg) ...)"""
-    (osc-remove-callback callback)
-    (setq *osc-bridge-callbacks* (append *osc-bridge-callbacks* (list callback))))
-  
-  (defun osc-remove-callback (callback)
-    """remove your callback function"""
-    (setq *osc-bridge-callbacks*
-          (delq nil (mapcar (lambda (x) (if (equal x callback) nil x)) *osc-bridge-callbacks*))))
-  
-  (defun osc-send-message (client message &optional timestamp)
-    """send an osc message to the client"""
-    (let ((process (car client))
-          (endpoint (apply #'format (append '("%s:%d") (cdr client)))))
-      (if (and (not (listp message))
-               (not (stringp (first message))))
-          (error (format "malformed message %s" message)))
-      (process-send-string
-       process
-       (format "%S\n" (if timestamp
-                          `(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
-                        `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
-  
-  ;; osc-protocol.el ends here
+(defvar *osc-bridge-callbacks*
+  nil
+  "list of callbacks served by the bridge")
+
+(defcustom osc-bridge-python-bin
+  nil
+  "alternative path for the python binary")
+
+(defun osc-bridge--python ()
+  (or osc-bridge-python-bin (executable-find "python")))
+
+(defun osc-bridge-process-input-line (line)
+  (let ((data (read line)))
+    (nth 3 data)))
+
+(defun osc-bridge-message-handler (msg)
+  (mapc (lambda (cb) (apply cb (list msg))) *osc-bridge-callbacks* ))
+
+(defun osc-bridge-filter (proc string)
+  (when (buffer-live-p (process-buffer proc))
+    (let ((message-queue nil))
+      (with-current-buffer (process-buffer proc)
+	(let ((moving (= (point) (process-mark proc))))
+	  (save-excursion
+	    ;; Insert the text, advancing the process marker.
+	    (goto-char (process-mark proc))
+	    (insert string)
+	    (let ((content (buffer-substring (point-min) (point))))
+	      (let ((rev-lines (nreverse (split-string content "\n" nil))))
+		(let ((last-line (car rev-lines)))
+		  (setq message-queue
+			(mapcar #'osc-bridge-process-input-line (cdr rev-lines)))
+		  (delete-region (point-min) (point))
+		  (insert last-line)))
+	      (set-marker (process-mark proc) (point))
+	      (if moving (goto-char (process-mark proc)))))))
+      (condition-case err
+	  (mapc #'osc-bridge-message-handler message-queue)
+	(error (princ (format "Error occured in message handler: %s" err)))))))
+
+(defun osc--expand-path (relative-path)
+  (expand-file-name relative-path (file-name-directory (or load-file-name buffer-file-name default-directory))))
+
+(defun osc--start-unbuffered-python-process (name buffer script)
+  (start-process name buffer (osc-bridge--python) "-u" (osc--expand-path script)))
+
+(defun osc-start-bridge ()
+  (let ((process (osc--start-unbuffered-python-process "osc-bridge" "*osc-bridge*" "bridge/main.py")))
+    (set-process-filter process #'osc-bridge-filter)
+    process))
+
+(defun osc-require-bridge ()
+  (unless (and *osc-bridge-process* (process-live-p *osc-bridge-process*))
+    (setq *osc-bridge-process* (osc-start-bridge)))
+  ,*osc-bridge-process*)
+
+(defun osc-server-address ()
+  '("localhost" 7016))
+
+(defun osc-make-client (hostname port)
+  """pass hostname and port of device to talk to"""
+  (list (osc-require-bridge) hostname port))
+
+(defun osc-add-callback (callback)
+  """add your callback function (lambda (msg) ...)"""
+  (osc-remove-callback callback)
+  (setq *osc-bridge-callbacks* (append *osc-bridge-callbacks* (list callback))))
+
+(defun osc-remove-callback (callback)
+  """remove your callback function"""
+  (setq *osc-bridge-callbacks*
+	(delq nil (mapcar (lambda (x) (if (equal x callback) nil x)) *osc-bridge-callbacks*))))
+
+(defun osc-send-message (client message &optional timestamp)
+  """send an osc message to the client"""
+  (let ((process (car client))
+	(endpoint (apply #'format (append '("%s:%d") (cdr client)))))
+    (if (and (not (listp message))
+	     (not (stringp (first message))))
+	(error (format "malformed message %s" message)))
+    (process-send-string
+     process
+     (format "%S\n" (if timestamp
+			`(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
+		      `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
+
+;; osc-protocol.el ends here
 #+end_src
 
 ** Packaging
