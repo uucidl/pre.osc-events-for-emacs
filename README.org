@@ -639,12 +639,17 @@ using its process API:
             (mapc #'osc-bridge-message-handler message-queue)
           (error (princ (format "Error occured in message handler: %s" err)))))))
   
+  (defun osc--expand-path (relative-path)
+    (expand-file-name relative-path (file-name-directory (or load-file-name buffer-file-name default-directory))))
+
+  (defun osc--start-unbuffered-python-process (name buffer script)
+    (start-process name buffer (osc-bridge--python) "-u" (osc--expand-path script)))
+
   (defun osc-start-bridge ()
-    (let ((process (start-process "osc-bridge" "*osc-bridge*"
-                                  (osc-bridge--python) "bridge/main.py")))
+    (let ((process (osc--start-unbuffered-python-process "osc-bridge" "*osc-bridge*" "bridge/main.py")))
       (set-process-filter process #'osc-bridge-filter)
       process))
-  
+
   (defun osc-require-bridge ()
     (unless (and *osc-bridge-process* (process-live-p *osc-bridge-process*))
       (setq *osc-bridge-process* (osc-start-bridge)))
