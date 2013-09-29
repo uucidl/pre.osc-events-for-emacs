@@ -8,17 +8,13 @@ To be described further here.
 Ideally only installing the emacs package and python should be
 necessary.
 
-* OSC bridge process
+* Implementation
 
 We will use a separate process to bridge emacs to the OSC protocol.
 
 The process will be initially written in python.
 
-** Monome, serialosc 1.2
-
-With serialosc 1.2, the guys at http://monome.org finally decided to
-remove the bonjour requirement from serialosc, and serialosc now has
-its own discovery protocol, fortunately based on OSC.
+An emacs package ties this process to emacs and your programs.
 
 ** TODO Setup
 
@@ -60,7 +56,7 @@ should execute the following:
   (setq-local org-babel-python-command (python-environment-bin "python"))
 #+end_src
 
-** Main program
+** Bridge program
 
 An emacs elisp package will talk to the python bridge:
 
@@ -586,7 +582,7 @@ And the main programs ties everything together:
 
 #+RESULTS:
 
-*** Client (Emacs) communication
+** Emacs package
 
 Now, we can use this bridge program already to communicate with emacs
 using its process API:
@@ -687,14 +683,22 @@ using its process API:
   ;; osc-protocol.el ends here
 #+end_src
 
-To run it within an environment instead (should not be needed)
+** Packaging
 
-#+begin_src elisp
-(require 'python-environment)
-(setq osc-bridge-python-bin (python-environment-bin "python"))
+The python module can be packaged normally and installed when the
+elisp module is being installed.
+
+#+begin_src elisp :tangle "osc-protocol-pkg.el"
+  (define-package
+    "osc-protocol"
+    "0.1.0"
+    "an API to send and respond to OSC messages (OpenSoundControl)"
+    '())
 #+end_src
 
-Which can be used like so:
+* Examples
+
+The osc package once loaded can be used like so:
 
 #+begin_src elisp
   (defun monome-callback (msg)
@@ -811,6 +815,8 @@ And some functions to test sending a large number of messages:
 (monome-row 0 0)
 #+end_src
 
+* References
+
 ** Using Mario Lang's OSC package
 
 I considered using Mario Lang's OSC package:
@@ -821,15 +827,8 @@ It however gives an idea of the type of OSC api that can function
 within Emacs. The API of this package will attempt to keep the same
 spirit wherever possible.
 
-** Packaging
+** Monome, serialosc 1.2
 
-The python module can be packaged normally and installed when the
-elisp module is being installed.
-
-#+begin_src elisp :tangle "osc-protocol-pkg.el"
-  (define-package
-    "osc-protocol"
-    "0.1.0"
-    "an API to send and respond to OSC messages (OpenSoundControl)"
-    '((python-environment "20130624.1239")))
-#+end_src
+With serialosc 1.2, the guys at http://monome.org finally decided to
+remove the bonjour requirement from serialosc, and serialosc now has
+its own discovery protocol, fortunately based on OSC.
