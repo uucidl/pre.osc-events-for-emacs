@@ -647,6 +647,7 @@ using its process API:
 			`(osc-packet "127.0.0.1:7016" ,endpoint ,message ,timestamp)
 		      `(osc-packet "127.0.0.1:7016" ,endpoint ,message))))))
 
+(provide 'osc-protocol)
 ;; osc-protocol.el ends here
 #+end_src
 
@@ -668,6 +669,8 @@ elisp module is being installed.
 The osc package once loaded can be used like so:
 
 #+begin_src elisp
+(require 'osc-protocol)
+
 (defun monome-callback (msg)
   (message (format "%S" msg))
   (if (equal "/monome/enc/delta" (car msg))
@@ -717,6 +720,8 @@ button and turning it off. This requires passing a timetag to the OSC
 
 #+begin_src elisp
 ;; start the bridge process
+(require 'osc-protocol)
+
 (progn
  (setq *grid64-client* (osc-make-client "127.0.0.1" 10775))
  (setq *arc-client* (osc-make-client "127.0.0.1" 11033))
@@ -743,6 +748,7 @@ button and turning it off. This requires passing a timetag to the OSC
 And some functions to test sending a large number of messages:
 
 #+begin_src elisp
+;; continued from previous test
 ;; test sending a whole bunch of leds
 (defun monome-row (row state)
   (dolist (coords
@@ -755,7 +761,7 @@ And some functions to test sending a large number of messages:
 		 (list row 6)
 		 (list row 7)))
     (osc-send-message
-     *grid64-client*
+     ,*grid64-client*
      (append (append '("/monome/grid/led/set") coords) (list state)))))
 
 (defun monome-row-anim (row state)
@@ -770,7 +776,7 @@ And some functions to test sending a large number of messages:
 		   (list row 6)
 		   (list row 7)))
       (osc-send-message
-       *grid64-client*
+       ,*grid64-client*
        (append (append '("/monome/grid/led/set") coords) (list state))
        (list 'relative delay))
       (setq delay (+ delay 1.00)))))
